@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.15.4
+ * Version: 4.15.5
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  *
@@ -56,7 +56,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.15.4';
+    public $version = '4.15.5';
 
     public function __construct()
     {
@@ -249,7 +249,7 @@ class MstoreCheckOut
 
 		if ( $user ) {
 			$avatar = get_user_meta( $user->ID, 'user_avatar', true );
-			if (isset($avatar) && $avatar != "" && !is_bool($avatar)) {
+			if (isset($avatar) && $avatar !== "" && !is_bool($avatar)) {
                 $url = $avatar[0];
             }
 		}
@@ -910,7 +910,7 @@ function flutter_prepare_checkout()
     
                 // Check user and authentication
                 $user = get_userdata($userId);
-                if ($user && (!is_user_logged_in() || get_current_user_id() != $userId)) {
+                if ($user && (!is_user_logged_in() || get_current_user_id() !== $userId)) {
                     wp_set_current_user($userId, $user->user_login);
                     wp_set_auth_cookie($userId);
     

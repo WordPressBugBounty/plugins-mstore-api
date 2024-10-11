@@ -65,11 +65,14 @@ class FlutterReview extends FlutterBaseController
                 return $user_id;
             }
 
-            // GET USER ORDERS (COMPLETED + PROCESSING)
+            if(isset($request['page']) && $request['page'] > 1){
+                return [];
+            }
+
             $customer_orders = wc_get_orders( array(
                 'limit' => -1,
                 'customer_id' => $user_id,
-                'status' => array_values( wc_get_is_paid_statuses() ),
+                'status' => 'wc-completed',
                 'return' => 'ids',
             ) );
         
