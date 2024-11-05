@@ -437,7 +437,7 @@ function addYITHBadgeToMetaResponse($response, $product){
 
 function customProductResponse($response, $object, $request)
 {
-    global $woocommerce_wpml;
+    global $woocommerce_wpml, $product;
 
     // Will load the product variations if this request is for a specific
     // product by ID
@@ -558,8 +558,15 @@ function customProductResponse($response, $object, $request)
         $response->data['attributesData'] = $attributesData;
     }
     
-    /* Product Add On */
+    
+    // /* Product Add On */
     if(class_exists('WC_Product_Addons_Helper')){
+        if(class_exists('WeDevs_Dokan') && dokan()->is_pro_exists()){
+            global $post;
+            wp_cache_delete('all_products', 'global_product_addons');
+            $post = get_post($response->data['id']);
+        }
+
         $add_ons_list =  [];
         $product_addons = WC_Product_Addons_Helper::get_product_addons( $response->data['id'], false );
         //$add_ons_list  = count($addOns) == 0 ? $product_addons : array_merge($product_addons, $addOns);
@@ -592,7 +599,7 @@ function customProductResponse($response, $object, $request)
         }
         $response->data['meta_data'] = $new_meta_data;
     }
-    
+
 
     /* Product Booking */
     if (is_plugin_active('woocommerce-appointments/woocommerce-appointments.php')) {
@@ -682,6 +689,7 @@ function get_filtered_term_product_counts($request, $taxonomy, $term_ids = [], $
     $tax_query       = new WP_Tax_Query($tax_query);
     $meta_query_sql  = $meta_query->get_sql('post', $wpdb->posts, 'ID');
     $tax_query_sql   = $tax_query->get_sql($wpdb->posts, 'ID');
+    $term_ids_condition = !empty($term_ids) ? "AND terms.term_id IN (" . implode(',', array_map('absint', $term_ids)) . ")" : "";
 
     // Generate query
     $query           = array();
@@ -696,7 +704,7 @@ function get_filtered_term_product_counts($request, $taxonomy, $term_ids = [], $
 			WHERE {$wpdb->posts}.post_type IN ( 'product' )
 			AND {$wpdb->posts}.post_status = 'publish'
 			" . $tax_query_sql['where'] . $meta_query_sql['where'] . "
-			AND terms.term_id IN (" . implode(',', array_map('absint', $term_ids)) . ")
+			$term_ids_condition
 		";
     $query['group_by'] = "GROUP BY terms.term_id";
     $query             = apply_filters('woocommerce_get_filtered_term_product_counts_query', $query);
