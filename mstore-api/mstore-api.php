@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.16.0
+ * Version: 4.16.2
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  *
@@ -51,6 +51,7 @@ include_once plugin_dir_path(__FILE__) . "controllers/flutter-fib.php";
 include_once plugin_dir_path(__FILE__) . "controllers/helpers/firebase-phone-auth-helper.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-auction.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-iyzico.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-phonepe.php";
 
 if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
     require __DIR__ . '/vendor/autoload.php';
@@ -58,7 +59,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.16.0';
+    public $version = '4.16.2';
 
     public function __construct()
     {
@@ -595,7 +596,7 @@ function custom_product_review($response, $object, $request)
         $image_arr = array();
         if(!is_string($image_post_ids)){
             foreach( $image_post_ids as $image_post_id ) {
-                $image_arr[] = wp_get_attachment_thumb_url( $image_post_id );
+                $image_arr[] = wp_get_original_image_url( $image_post_id );
             }
         }
         $response->data['images'] = $image_arr;
