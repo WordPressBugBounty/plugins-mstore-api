@@ -62,7 +62,7 @@ class FlutterIyzico extends FlutterBaseController
 
         $options = $this->createOptions();
 		$req = new \Iyzipay\Request\RetrieveCheckoutFormRequest();
-		$req->setLocale( 'en' );
+		$req->setLocale( $this->getLanguageSetting() );
 		$req->setToken( $request['token'] );
         $req->setConversationId( $request['order_id'] );
 
@@ -131,7 +131,7 @@ class FlutterIyzico extends FlutterBaseController
 
         $callback_url = $order->get_checkout_order_received_url();
         $request = new \Iyzipay\Request\CreateCheckoutFormInitializeRequest();
-        $request->setLocale('en');
+        $request->setLocale($this->getLanguageSetting());
         $request->setConversationId($order_id);
         $request->setPrice(round( $order->get_total(), 2 ));
         $request->setPaidPrice(round( $order->get_total(), 2 ) );
@@ -195,6 +195,13 @@ class FlutterIyzico extends FlutterBaseController
 		$settings = $checkoutSettings->getSettings();
 
         return $settings['order_status'];
+    }
+
+    private function getLanguageSetting(){
+        $checkoutSettings   = new \Iyzico\IyzipayWoocommerce\Checkout\CheckoutSettings();
+		$settings = $checkoutSettings->getSettings();
+
+        return $settings['form_language'] || 'en';
     }
 }
 

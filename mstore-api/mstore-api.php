@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.16.5
+ * Version: 4.16.6
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  *
@@ -52,6 +52,7 @@ include_once plugin_dir_path(__FILE__) . "controllers/helpers/firebase-phone-aut
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-auction.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-iyzico.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-phonepe.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-points-offline-store.php";
 
 if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
     require __DIR__ . '/vendor/autoload.php';
@@ -59,7 +60,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.16.5';
+    public $version = '4.16.6';
 
     public function __construct()
     {
@@ -76,8 +77,8 @@ class MstoreCheckOut
         include_once(ABSPATH . 'wp-admin/includes/plugin.php');
         //include_once(ABSPATH . 'wp-includes/pluggable.php');
 
-        //migrate old versions to re-verify purchase code automatically
-        verifyPurchaseCodeAuto();
+        // //migrate old versions to re-verify purchase code automatically
+        // verifyPurchaseCodeAuto();
 
         add_filter( 'get_avatar_url', array( $this, 'filter_avatar' ), 10, 3 );
 
@@ -228,38 +229,39 @@ class MstoreCheckOut
         }
     }
 
-    public function filter_avatar( $url, $id_or_email, $args ) {
-		$finder = false;
-		$is_id  = is_numeric( $id_or_email );
+    public function filter_avatar($url, $id_or_email, $args)
+    {
+        $finder = false;
+        $user = false;
 
-		if ( $is_id ) {
-			$finder = absint( $id_or_email );
-		} elseif ( is_string( $id_or_email ) ) {
-			$finder = $id_or_email;
-		} elseif ( $id_or_email instanceof \WP_User ) {
-			// User Object.
-			$finder = $id_or_email->ID;
-		} elseif ( $id_or_email instanceof \WP_Post ) {
-			// Post Object.
-			$finder = (int) $id_or_email->post_author;
-		} elseif ( $id_or_email instanceof \WP_Comment ) {
-			return $url;
-		}
+        // Early return if id_or_email is empty
+        if (empty($id_or_email)) {
+            return $url;
+        }
 
-		if ( ! $finder ) {
-			return $url;
-		}
-
-		$user = get_user_by( $is_id ? 'ID' : 'email', $finder );
-
-		if ( $user ) {
-			$avatar = get_user_meta( $user->ID, 'user_avatar', true );
-			if (isset($avatar) && $avatar !== "" && !is_bool($avatar)) {
-                $url = $avatar[0];
+        if (is_numeric($id_or_email)) {
+            $user = get_user_by('id', absint($id_or_email));
+        } elseif (is_string($id_or_email) && is_email($id_or_email)) {
+            $user = get_user_by('email', $id_or_email);
+        } elseif ($id_or_email instanceof WP_User) {
+            $user = $id_or_email;
+        } elseif ($id_or_email instanceof WP_Post) {
+            $user = get_user_by('id', (int)$id_or_email->post_author);
+        } elseif ($id_or_email instanceof WP_Comment) {
+            if (!empty($id_or_email->user_id)) {
+                $user = get_user_by('id', (int)$id_or_email->user_id);
             }
-		}
-		return $url;
-	}
+        }
+
+        if ($user && !is_wp_error($user)) {
+            $avatar = get_user_meta($user->ID, 'user_avatar', true);
+            if (isset($avatar) && $avatar !== "" && !is_bool($avatar) && !empty($avatar[0])) {
+                return $avatar[0];
+            }
+        }
+
+        return $url;
+    }
 
     function mstore_delete_json_file(){
         if(checkIsAdmin(get_current_user_id())){
@@ -618,7 +620,16 @@ function flutter_custom_change_product_attribute($response, $item, $request)
 {
     $taxonomy = wc_attribute_taxonomy_name($item->attribute_name);
 
-    // Get list attribute terms based on attribute.
+    // Combine all attribute terms into the return result when getting
+    // attributes. Reduce api calls to get sub-attributes from the app
+    $options = get_terms([
+        'taxonomy' => $taxonomy,
+        'hide_empty' => false,
+    ]);
+
+    $response->data['terms'] = $options;
+
+    // Get list count of attribute terms based on attribute.
     $terms = get_filtered_term_product_counts($request, $taxonomy);
 
     $is_visible = false;
@@ -1102,10 +1113,30 @@ function custom_woocommerce_rest_prepare_shop_order_object($response)
     }
     $response->data['line_items'] = $line_items;
 
-    // Get the value
-    $bacs_info = get_option( 'woocommerce_bacs_accounts');
-    $response->data['bacs_info'] = $bacs_info;
-    
+    // Get payment method
+    $payment_method = $response->data['payment_method'];
+    $payment_method_title = $response->data['payment_method_title'];
+    $order_id = $response->data['id'];
+
+    // Get default Bank transfer info
+    if ($payment_method == 'bacs' && class_exists('WC_Gateway_BACS')) {
+        $bacs = new WC_Gateway_BACS();
+        $bacs_accounts = apply_filters('woocommerce_bacs_accounts', $bacs->account_details, $order_id);
+        $response->data['bacs_info'] = $bacs_accounts;
+    }
+
+    // Get other Bank transfer info
+    if (strpos($payment_method, 'bank_transfer') !== false && is_plugin_active('fr-multi-bank-transfer-payment-gateways-for-woocommerce/fr-multi-bank-transfer-gateways-for-woocommerce.php')) {
+        require_once ABSPATH . 'wp-content/plugins/fr-multi-bank-transfer-payment-gateways-for-woocommerce/includes/gateways/class-fr-multi-bank-transfer-gateways-for-woocommerce-bank-transfer.php';
+
+        $bacs = new Fr_Multi_Bank_Transfer_Gateways_For_Woocommerce_Bank_Transfer([
+            'id' => $payment_method,
+            'method_title' => $payment_method_title,
+        ]);
+        $bacs_accounts = apply_filters('woocommerce_bacs_accounts', $bacs->account_details, $order_id);
+        $response->data['bacs_info'] = $bacs_accounts;
+    }
+
     return $response;
 }
 

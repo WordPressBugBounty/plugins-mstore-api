@@ -303,9 +303,9 @@ if (isset($verified) && $verified == "1") {
         ?>
 
         <button type="submit" class="mstore-button-class" name='but_submit'>Save</button>
-        <button type="submit" class="mstore-button-class bg-red-700" name='but_deactive'
+        <!-- <button type="submit" class="mstore-button-class bg-red-700" name='but_deactive'
                 onclick="return confirm('Are you sure to deactivate the license on this domain?');">Deactivate License
-        </button>
+        </button> -->
     </form>
     <?php
 }

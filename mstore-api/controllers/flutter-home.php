@@ -132,10 +132,16 @@ class FlutterHome extends WP_REST_Controller
     public function get_home_data($request)
     {
         $lang = sanitize_text_field($request["lang"]);
-        $homeCache  =  FlutterUtils::get_home_cache_path($lang);
-        if($request["reset"]  == "false" && file_exists($homeCache)){
+        $reset = isset($request["reset"]) ? sanitize_text_field($request["reset"]) : "true";
+        
+        $homeCache = FlutterUtils::get_home_cache_path($lang);
+        
+        if($reset !== "true" && file_exists($homeCache) && filesize($homeCache) > 0) {
             $fileContent = file_get_contents($homeCache);
-            return  json_decode($fileContent, true);
+            $cachedData = json_decode($fileContent, true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return $cachedData;
+            }
         }
 
         $api = new WC_REST_Products_Controller();
@@ -145,36 +151,61 @@ class FlutterHome extends WP_REST_Controller
         }
         if (file_exists($path)) {
             $fileContent = file_get_contents($path);
-            $array = json_decode($fileContent, true);
 
-            //get products for horizontal layout
-            $array['HorizonLayout'] = $this->getProductsForHorizonLayout($array["HorizonLayout"], $api, $request);
+            // Decode json data to object
+            $array = json_decode($fileContent);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                return new WP_Error(
+                    "invalid_json", 
+                    "Config file contains invalid JSON: " . json_last_error_msg(), 
+                    array('status' => 400)
+                );
+            }
 
-            //get products for dynamic layout
-            $tabBar = $array['TabBar'];
+            // Get products for horizontal layout
+            $horizonLayoutWithProducts = $this->getProductsForHorizonLayout($array->HorizonLayout, $api, $request);
+            $array->HorizonLayout = json_decode(json_encode($horizonLayoutWithProducts));
+
+            // Get products for dynamic layout in tabBar
+            $tabBar = $array->TabBar;
             $results = [];
             foreach ($tabBar as $tabBarItem) {
-                if($tabBarItem['layout'] == 'dynamic' && isset($tabBarItem['configs']) && is_array($tabBarItem['configs']) && isset($tabBarItem['configs']['HorizonLayout'])){
-                    $tabBarItem['configs']['HorizonLayout'] = $this->getProductsForHorizonLayout($tabBarItem['configs']['HorizonLayout'], $api, $request);
+                $layout = $tabBarItem->layout;
+                $configs = $tabBarItem->configs;
+                
+                if($layout == 'dynamic' && isset($configs) && is_array($configs)){
+                    $horizonLayout = $configs->HorizonLayout;
+
+                    if(isset($horizonLayout) && is_array($horizonLayout)){
+                        $horizonLayoutWithProducts = $this->getProductsForHorizonLayout($horizonLayout, $api, $request);
+                        $tabBarItem->configs->HorizonLayout = json_decode(json_encode($horizonLayoutWithProducts));
+                    }
                 }
                 $results[] = $tabBarItem;
             }
-            $array['TabBar'] = $results;
+            $array->TabBar = $results;
 
-            //get products for vertical layout
-            if (isset($array["VerticalLayout"])) {
-                $layout = $array["VerticalLayout"];
-                if (!in_array($layout['layout'], $this->unSupportedVerticalLayouts)) {
-                    if($countDataLayout <  4){
-                        $layout["data"] = $this->getProductsByLayout($layout, $api, $request);
+            // Get products for vertical layout
+            $countDataLayout = 0;
+            $results = [];
+            if (isset($array->VerticalLayout)) {
+                $layout = $array->VerticalLayout;
+                if (!in_array($layout->layout, $this->unSupportedVerticalLayouts)) {
+                    if ($countDataLayout <  4) {
+                        $layout->data = $this->getProductsByLayout(json_decode(json_encode($layout), true), $api, $request);
                         $countDataLayout += 1;
                     }
-                    $array['VerticalLayout'] = $layout;
+                    $array->VerticalLayout = $layout;
                 }
             }
 
-            //save data to  cache file
-            file_put_contents($homeCache, json_encode($array));
+            // Save data to a cache file
+            // But do not have a way to clear cache
+            $cacheResult = file_put_contents($homeCache, json_encode($array));
+            if ($cacheResult === false) {
+                // Continue even if cache write fails, but maybe log it
+                error_log("Failed to write home cache file: " . $homeCache);
+            }
 
             return $array;
         } else {
@@ -182,27 +213,31 @@ class FlutterHome extends WP_REST_Controller
         }
     }
 
-    function getProductsForHorizonLayout($horizonLayout, $api, $request){
+    function getProductsForHorizonLayout($horizonLayout, $api, $request)
+    {
         $countDataLayout = 0;
         $results = [];
+
         foreach ($horizonLayout as $layout) {
-            if (in_array($layout['layout'], $this->supportedLayouts)) {
-                if($countDataLayout <  4){
-                    $layout["data"] = $this->getProductsByLayout($layout, $api, $request);
+            if (in_array($layout->layout, $this->supportedLayouts)) {
+                if ($countDataLayout <  4) {
+                    $layout->data = $this->getProductsByLayout(json_decode(json_encode($layout), true), $api, $request);
                     $countDataLayout += 1;
                 }
                 $results[] = $layout;
             } else {
-                if (isset($layout["items"]) && count($layout["items"]) > 0) {
+                if (isset($layout->items) && count($layout->items) > 0) {
                     $items = [];
-                    foreach ($layout["items"] as $item) {
-                        if($countDataLayout <  4 && array_key_exists('layout', $item) && in_array($item['layout'], $this->supportedLayouts)){
+                    $itemArr = json_decode(json_encode($layout->items), true);
+                    foreach ($itemArr as $item) {
+                        if ($countDataLayout <  4 && array_key_exists('layout', $item) && in_array($item['layout'], $this->supportedLayouts)) {
                             $item["data"] = $this->getProductsByLayout($item, $api, $request);
                             $countDataLayout += 1;
                         }
+
                         $items[] = $item;
                     }
-                    $layout["items"] = $items;
+                    $layout->items = $items;
                 }
                 $results[] = $layout;
             }

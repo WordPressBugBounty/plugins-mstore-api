@@ -5,10 +5,10 @@ define("ACTIVE_TOKEN", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIiLCJ
 
 // migrate for old versions
 function verifyPurchaseCodeAuto(){
-    $is_verified = (get_option('mstore_purchase_code') ==  true || get_option('mstore_purchase_code') ==  "1") && !empty(get_option('mstore_purchase_code_key'))  && empty(get_option('mstore_active_hash_code'));
-    if($is_verified){
-        verifyPurchaseCode(get_option('mstore_purchase_code_key'));
-    }
+    // $is_verified = (get_option('mstore_purchase_code') ==  true || get_option('mstore_purchase_code') ==  "1") && !empty(get_option('mstore_purchase_code_key'))  && empty(get_option('mstore_active_hash_code'));
+    // if($is_verified){
+    //     verifyPurchaseCode(get_option('mstore_purchase_code_key'));
+    // }
 }
 
 function isPurchaseCodeVerified(){
