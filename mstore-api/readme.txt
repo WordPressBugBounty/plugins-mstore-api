@@ -3,7 +3,7 @@ Contributors:      inspireui
 Tags:              flutter, app builder, app creator, mobile app builder, woocommerce app
 Requires at least: 4.4
 Tested up to:      6.5.3
-Stable tag:        4.16.6
+Stable tag:        4.16.7
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,9 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 1. Click Install.
 
 == Changelog ==
+= 4.16.7 =
+  * Support push notification for points offline store
+
 = 4.16.6 =
   * Support points offline store api
 

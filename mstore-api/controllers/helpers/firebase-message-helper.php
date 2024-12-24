@@ -84,7 +84,7 @@ class FirebaseMessageHelper
         return $access_token;
     }
 
-    public static function push_notification($title, $message, $deviceToken)
+    public static function push_notification($title, $message, $deviceToken, $data = array())
     {
         if(!FirebaseMessageHelper::is_file_existed()){
             return new WP_Error(404, "Firebase private key file is not found", array('status' => 404));
@@ -103,10 +103,10 @@ class FirebaseMessageHelper
                         "title" => $title, 
                         "body" => $message
                     ],
-                    "data" => [
+                    "data" => array_merge([
                         "title" => $title, 
                         "body" => $message
-                    ],
+                    ], $data),
                     "android" => [
                         "notification" => [
                             "click_action" => "FLUTTER_NOTIFICATION_CLICK",
