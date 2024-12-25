@@ -380,7 +380,13 @@ class FlutterTeraWallet extends FlutterBaseController
             if ($order) {
                 if ($order->get_customer_id() == $user_id) {
                     wp_set_current_user($user_id);
-                    woo_wallet()->wallet->wallet_partial_payment($params['order_id']);
+                    // There is a breaking change in TeraWallet 1.5.8 and later
+                    $woo_wallet_version = get_plugin_data(WP_PLUGIN_DIR . "/woo-wallet/woo-wallet.php")['Version'];
+                    if (version_compare($woo_wallet_version, '1.5.8', '<')) {
+                        woo_wallet()->wallet->wallet_partial_payment($params['order_id']);
+                    } else {
+                        woo_wallet()->wallet->woocommerce_order_processed($params['order_id']);
+                    }
                     return array(
                         'result' => 'success',
                     );

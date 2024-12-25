@@ -110,6 +110,9 @@ class FlutterPointsOfflineStore extends FlutterBaseController
         // Add points
         WC_Points_Rewards_Manager::increase_points( $user_id, $points, 'offline-store',['desc' => $description] );
 
+        //Push notification to client
+        pushNotificationForUser($user_id, 'Points Successfully Added!', "Congratulations! You've Earned ".$points." Points!",['type' => 'points_added']);
+
         return rest_ensure_response( array( 'status' => 'success', 'message' => 'Points added successfully' ) );
     }
 
@@ -129,6 +132,9 @@ class FlutterPointsOfflineStore extends FlutterBaseController
         // Subtract points
         WC_Points_Rewards_Manager::decrease_points( $user_id, $points, 'offline-store',['desc' => $description] );
         
+        //Push notification to client
+        pushNotificationForUser($user_id, 'Points Successfully Redeemed!', "You've Redeemed ".$points." Points!", ['type' => 'points_redeemed']);
+
         return rest_ensure_response( array( 'status' => 'success', 'message' => 'Points subtracted successfully' ) );
     }
 

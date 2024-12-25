@@ -131,14 +131,14 @@ function trackOrderStatusChanged($id, $previous_status, $next_status)
     sendNewOrderNotificationToDelivery($id, $status);
 }
 
-function _pushNotification($user_id, $title, $message, $meta_key){
+function _pushNotification($user_id, $title, $message, $meta_key, $data = array()){
     $is_notification_on = $meta_key == 'mstore_manager_device_token' || $meta_key == 'mstore_delivery_device_token';
     if (is_plugin_active('onesignal-free-web-push-notifications/onesignal.php')) {
         _pushNotificationOneSignal($title,$message, $user_id, $is_notification_on);
     } else {
         $deviceToken = get_user_meta($user_id, $meta_key, true);
         if (isset($deviceToken) && $deviceToken != false) {
-            _pushNotificationFirebase($user_id,$title, $message, $deviceToken, $is_notification_on);
+            _pushNotificationFirebase($user_id,$title, $message, $deviceToken, $is_notification_on, $data);
         }
     }
 }
@@ -151,8 +151,8 @@ function pushNotificationForVendor($user_id, $title, $message){
     _pushNotification($user_id, $title, $message, 'mstore_manager_device_token');
 }
 
-function pushNotificationForUser($user_id, $title, $message){
-     _pushNotification($user_id, $title, $message, 'mstore_device_token');
+function pushNotificationForUser($user_id, $title, $message, $data = array()){
+     _pushNotification($user_id, $title, $message, 'mstore_device_token', $data);
 }
 
 function sendNewOrderNotificationToDelivery($order_id, $status)
@@ -904,10 +904,10 @@ function sendNotificationForOrderStatusUpdated($order_id, $status)
     }
 }
 
-function _pushNotificationFirebase($user_id, $title, $message, $deviceToken, $is_notification_on){
+function _pushNotificationFirebase($user_id, $title, $message, $deviceToken, $is_notification_on, $data){
     $is_on = $is_notification_on == true || isNotificationEnabled($user_id);
     if($is_on){
-        FirebaseMessageHelper::push_notification($title, $message, $deviceToken);
+        FirebaseMessageHelper::push_notification($title, $message, $deviceToken, $data);
     }
 }
 
