@@ -579,6 +579,28 @@ class FlutterUserController extends FlutterBaseController
 		}else{
             $is_driver_available = in_array('administrator',$user->roles) || in_array('wcfm_delivery_boy',$user->roles);
         }
+
+        // Check order status change capability
+        $order_status_change = false;
+
+        // Check for Dokan
+        if (is_plugin_active('dokan-lite/dokan.php') || is_plugin_active('dokan-pro/dokan-pro.php')) {
+            $dokan_settings = get_option('dokan_selling');
+            $order_status_change = isset($dokan_settings['order_status_change']) ? 
+                filter_var($dokan_settings['order_status_change'], FILTER_VALIDATE_BOOLEAN) : false;
+        }
+
+        // Check for WCFM
+        if (is_plugin_active('wc-frontend-manager/wc_frontend_manager.php') && class_exists('WCFMmp')) {
+            global $WCFM;
+            $order_status_change = $WCFM->wcfm_vendor_support->wcfm_vendor_has_capability($user->ID, 'order_status_update');
+        }
+        
+        // If user is admin, always allow order status change
+        if (in_array('administrator', $user->roles)) {
+            $order_status_change = true;
+        }
+
         return array(
             "id" => $user->ID,
             "username" => $user->user_login,
@@ -597,7 +619,8 @@ class FlutterUserController extends FlutterBaseController
             "billing" => $billing,
             "avatar" => $avatar,
             "is_driver_available" => $is_driver_available,
-            "dokan_enable_selling" => $user->dokan_enable_selling
+            "dokan_enable_selling" => $user->dokan_enable_selling,
+            "order_status_change" => (bool)$order_status_change
         );
     }
 
@@ -1350,7 +1373,7 @@ class FlutterUserController extends FlutterBaseController
         $mob = $params['country_code'].$params['mobile'];
         $mobuser = getUserFromPhone($mob);
         if ($mobuser == null) {
-            return parent::sendError("existed_mobile", 'Phone number is not registered!', 400);
+            return parent::sendError("not_existed_mobile", 'Phone number is not registered!', 400);
         } 
 
         return  true;

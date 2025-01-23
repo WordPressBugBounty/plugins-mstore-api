@@ -170,13 +170,13 @@ class FlutterHome extends WP_REST_Controller
             $tabBar = $array->TabBar;
             $results = [];
             foreach ($tabBar as $tabBarItem) {
-                $layout = $tabBarItem->layout;
-                $configs = $tabBarItem->configs;
-                
-                if($layout == 'dynamic' && isset($configs) && is_array($configs)){
+                $layout = isset($tabBarItem->layout) ? $tabBarItem->layout : null;
+                $configs = isset($tabBarItem->configs) && is_array($tabBarItem->configs) ? $tabBarItem->configs : null;
+
+                if ($layout === 'dynamic' && !empty($configs)) {
                     $horizonLayout = $configs->HorizonLayout;
 
-                    if(isset($horizonLayout) && is_array($horizonLayout)){
+                    if (isset($horizonLayout) && is_array($horizonLayout)) {
                         $horizonLayoutWithProducts = $this->getProductsForHorizonLayout($horizonLayout, $api, $request);
                         $tabBarItem->configs->HorizonLayout = json_decode(json_encode($horizonLayoutWithProducts));
                     }

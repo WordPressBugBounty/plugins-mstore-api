@@ -94,6 +94,7 @@ class FlutterAuction extends FlutterBaseController
         $product_id = sanitize_text_field($params['product_id']); 
         $bid_value = sanitize_text_field($params['bid_value']); 
         
+        WC()->session->set( 'wc_notices', null );
         $bid = new WC_Bid();
         $result = $bid->placebid($product_id, $bid_value);
         if ($result == false) {
@@ -106,7 +107,7 @@ class FlutterAuction extends FlutterBaseController
                 $lastNotice = array_slice($notices['error'], -1)[0];
             }
             if($lastNotice != null){
-                return parent::sendError("invalid_bid", $lastNotice['notice'] ?? 'Error bid' , 400);
+                return parent::sendError("invalid_bid", htmlspecialchars_decode($lastNotice['notice'] ?? 'Error bid') , 400);
             }
         }
         return true;

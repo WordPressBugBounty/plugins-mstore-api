@@ -802,6 +802,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         $_hour = isset($data->_hour) ? $data->_hour : null;
         $services = isset($data->services) ? $data->services : false;
         $comment_services = false;
+        $coupon = isset($data->coupon) ? $data->coupon : null;
         $message = '';
         if (!empty($services))
         {
@@ -892,7 +893,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     'date_end' => $date_start,
                     'comment' => json_encode($comment) ,
                     'type' => 'reservation',
-                    'price' => Listeo_Core_Bookings_Calendar::calculate_price($listing_id, $date_start, $date_end, $tickets, $services, '') ,
+                    'price' => Listeo_Core_Bookings_Calendar::calculate_price($listing_id, $date_start, $date_end, $tickets, $services, $coupon) ,
                 ));
 
                 $already_sold_tickets = (int)get_post_meta($listing_id, '_event_tickets_sold', true);
@@ -918,11 +919,11 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     {
                         $multiply = 1;
                         if (isset($adults)) $multiply = $adults;
-                        $price = Listeo_Core_Bookings_Calendar::calculate_price($listing_id, $date_start, $date_end, $multiply, $services, '');
+                        $price = Listeo_Core_Bookings_Calendar::calculate_price($listing_id, $date_start, $date_end, $multiply, $services, $coupon);
                     }
                     else
                     {
-                        $price = Listeo_Core_Bookings_Calendar::calculate_price($listing_id, $date_start, $date_end, 1, $services, '');
+                        $price = Listeo_Core_Bookings_Calendar::calculate_price($listing_id, $date_start, $date_end, 1, $services, $coupon);
                     }
 
                     $booking_id = self::insert_booking(array(
@@ -973,11 +974,11 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     {
                         $multiply = 1;
                         if (isset($adults)) $multiply = $adults;
-                        $price = Listeo_Core_Bookings_Calendar::calculate_price($listing_id, $date_start, $date_end, $multiply, $services, '');
+                        $price = Listeo_Core_Bookings_Calendar::calculate_price($listing_id, $date_start, $date_end, $multiply, $services, $coupon);
                     }
                     else
                     {
-                        $price = Listeo_Core_Bookings_Calendar::calculate_price($listing_id, $date_start, $date_end, 1, $services, '');
+                        $price = Listeo_Core_Bookings_Calendar::calculate_price($listing_id, $date_start, $date_end, 1, $services, $coupon);
                     }
                     $hour_end = (isset($_hour_end) && !empty($_hour_end)) ? $_hour_end : $_hour;
                     $booking_id = self::insert_booking(array(
@@ -1022,11 +1023,11 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                         {
                             $multiply = 1;
                             if (isset($adults)) $multiply = $adults;
-                            $price = Listeo_Core_Bookings_Calendar::calculate_price($listing_id, $date_start, $date_end, $multiply, $services, '');
+                            $price = Listeo_Core_Bookings_Calendar::calculate_price($listing_id, $date_start, $date_end, $multiply, $services, $coupon);
                         }
                         else
                         {
-                            $price = Listeo_Core_Bookings_Calendar::calculate_price($listing_id, $date_start, $date_end, 1, $services, '');
+                            $price = Listeo_Core_Bookings_Calendar::calculate_price($listing_id, $date_start, $date_end, 1, $services, $coupon);
                         }
 
                         $booking_id = self::insert_booking(array(
@@ -1359,7 +1360,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         /* --- - ListingPro - ---*/
         public function get_post_gallery_images_listingPro($object)
         {
-
+            $results = [];
             $gallery = get_post_meta($object['id'], 'gallery_image_ids', true);
 
             $gallery = explode(',', $gallery);
@@ -2112,14 +2113,15 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 parent::__construct('job_listing');
             }
 
-            $isChild = strstr(strtolower(wp_get_theme()) , "child");
-            if ($isChild == 'child')
-            {
+            $isChild = strstr(strtolower(wp_get_theme()), "child");
+            if ($isChild == 'child') {
                 $string = explode(" ", wp_get_theme());
-                $this->_template = strtolower($string[0] . ' ' . $string[1]);
-            }
-            else
-            {
+                if (count($string) > 1) {
+                    $this->_template = strtolower($string[0] . ' ' . $string[1]);
+                } else {
+                    $this->_template = strtolower($string[0]);
+                }
+            } else {
                 $this->_template = strtolower(wp_get_theme());
             }
 

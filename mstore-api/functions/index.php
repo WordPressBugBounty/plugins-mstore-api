@@ -336,12 +336,12 @@ function deactiveMStoreApi()
     return $success;
 }
 
-function parseMetaDataForBookingProduct($product)
+function parseMetaDataForBookingProduct($cart_item)
 {
-    if (is_plugin_active('woocommerce-appointments/woocommerce-appointments.php')) {
+    if (is_plugin_active('woocommerce-appointments/woocommerce-appointments.php') && isset($cart_item['meta_data'])) {
         //add meta_data to $_POST to use for booking product
         $meta_data = [];
-        foreach ($product["meta_data"] as $key => $value) {
+        foreach ($cart_item["meta_data"] as $key => $value) {
             if ($value["key"] == "staff_ids" && isset($value["value"])) {
                 $staffs = is_array($value["value"]) ? $value["value"] : json_decode($value["value"], true);
                 if (count($staffs) > 0) {
@@ -1016,25 +1016,25 @@ function cleanupAppointmentCartData($customer_id) {
     }	
 }
 
-function buildCartItemData($products, $callback){
-    foreach ($products as $product) {
-                $productId = absint($product['product_id']);
+function buildCartItemData($line_items, $callback){
+    foreach ($line_items as $item) {
+                $productId = absint($item['product_id']);
 
-                $quantity = $product['quantity'];
-                $variationId = isset($product['variation_id']) ? $product['variation_id'] : "";
+                $quantity = $item['quantity'];
+                $variationId = isset($item['variation_id']) ? $item['variation_id'] : "";
 
                 $attributes = [];
-                if (isset($product["meta_data"])) {
-                    foreach ($product["meta_data"] as $item) {
+                if (isset($item["meta_data"])) {
+                    foreach ($item["meta_data"] as $item) {
                         if($item["value"] != null){
                             $attributes[strtolower($item["key"])] = $item["value"];
                         }
                     }
                 }
 
-                if (isset($product['addons'])) {
+                if (isset($item['addons'])) {
                     $addons = array();
-                    foreach ($product['addons'] as $key => $value) {
+                    foreach ($item['addons'] as $key => $value) {
                         if(is_array($value)){
                             $addons[$key] = array_map(function($val){
                                 return sanitize_title($val);
@@ -1059,16 +1059,16 @@ function buildCartItemData($products, $callback){
                         }
                     }
                 } else {
-                    parseMetaDataForBookingProduct($product);
+                    parseMetaDataForBookingProduct($item);
                     $cart_item_data = array();
                     if (is_plugin_active('woo-wallet/woo-wallet.php')) {
                         $wallet_product = get_wallet_rechargeable_product();
                         if ($wallet_product->get_id() == $productId) {
-                            $cart_item_data['recharge_amount'] = $product['total'];
+                            $cart_item_data['recharge_amount'] = $item['total'];
                         }
                     }
-                    if(isset($product['ywgc_amount'])){
-                        $cart_item_data['ywgc_amount'] = $product['ywgc_amount'];
+                    if(isset($item['ywgc_amount'])){
+                        $cart_item_data['ywgc_amount'] = $item['ywgc_amount'];
                         $cart_item_data['ywgc_product_id'] = $productId;
                     }
                     $callback($productId, $quantity, 0, $attributes, $cart_item_data);

@@ -3,7 +3,7 @@ Contributors:      inspireui
 Tags:              flutter, app builder, app creator, mobile app builder, woocommerce app
 Requires at least: 4.4
 Tested up to:      6.5.3
-Stable tag:        4.16.8
+Stable tag:        4.16.9
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,9 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 1. Click Install.
 
 == Changelog ==
+= 4.16.9 =
+  * Fix warning for listings api
+
 = 4.16.8 =
   * Fix to check version to call wallet_partial_payment method
 

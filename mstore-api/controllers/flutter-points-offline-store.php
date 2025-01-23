@@ -62,7 +62,7 @@ class FlutterPointsOfflineStore extends FlutterBaseController
         global $wc_points_rewards;
 
         if($event_type == 'offline-store'){
-            return $event->data['desc'] ?? 'Offline store';
+            return !$event->data['desc'] ? 'Offline store' : $event->data['desc'];
         }
         
         return $event_description;

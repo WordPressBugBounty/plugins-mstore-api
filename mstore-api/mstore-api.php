@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.16.8
+ * Version: 4.16.9
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  *
@@ -60,7 +60,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.16.8';
+    public $version = '4.16.9';
 
     public function __construct()
     {
@@ -1081,11 +1081,13 @@ function set_author_in_for_vendor_staff( $query ) {
             return;
         }
 
-        $vendor_staffs = dokan_get_vendor_staff( $vendor->get_id() );
-        if ( ! in_array( $vendor->get_id(), $vendor_staffs, true ) ) {
-            return;
-        }
-        $query->set( 'author__in', $vendor_staffs );
+        if ( function_exists( 'dokan_get_vendor_staff' ) ) {
+			$vendor_staffs = dokan_get_vendor_staff( $vendor->get_id() );
+			if ( ! in_array( $vendor->get_id(), $vendor_staffs, true ) ) {
+				return;
+			}
+			$query->set( 'author__in', $vendor_staffs );
+		}
     }
 }
 
