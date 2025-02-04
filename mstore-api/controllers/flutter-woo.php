@@ -409,7 +409,7 @@ class FlutterWoo extends FlutterBaseController
         if(!$base_permission){
             return false;
         }
-        $cookie = $request->get_header("User-Cookie");
+        $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
         if (isset($cookie) && $cookie != null) {
             $user_id = validateCookieLogin($cookie);
             if (is_wp_error($user_id)) {
@@ -425,7 +425,7 @@ class FlutterWoo extends FlutterBaseController
      */
     private function check_prerequisites($request, $body)
     {
-        $cookie = $request->get_header("User-Cookie");
+        $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
         if (isset($cookie) && $cookie != null) {
             $user_id = validateCookieLogin($cookie);
             if (is_wp_error($user_id)) {
@@ -851,7 +851,7 @@ class FlutterWoo extends FlutterBaseController
             return parent::sendError("invalid_item", $error, 400);
         }
 
-        $cookie = $request->get_header("User-Cookie");
+        $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
         if (isset($cookie) && $cookie != null) {
             $user_id = validateCookieLogin($cookie);
             if (is_wp_error($user_id)) {
@@ -1027,7 +1027,7 @@ class FlutterWoo extends FlutterBaseController
             include_once WC_ABSPATH . 'includes/wc-cart-functions.php';
         }
 
-        $cookie = $request->get_header("User-Cookie");
+        $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
         if (isset($cookie) && $cookie != null) {
             $user_id = validateCookieLogin($cookie);
             if (is_wp_error($user_id)) {
@@ -1274,8 +1274,7 @@ class FlutterWoo extends FlutterBaseController
         $controller = new WC_REST_Product_Reviews_Controller();
 		$response = $controller->create_item($request);
 		if(is_wp_error($response)){
-			return array(
-			'message'=>$response->get_error_message ());
+			return $response;
 		}
 		$comment_id = $response->get_data()['id'];
         if(isset($request['comment_meta']) && is_array($request['comment_meta']) && !empty($request['comment_meta'])){
