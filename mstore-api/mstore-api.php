@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.17.0
+ * Version: 4.17.1
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  *
@@ -53,6 +53,7 @@ include_once plugin_dir_path(__FILE__) . "controllers/flutter-auction.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-iyzico.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-phonepe.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-points-offline-store.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-smart-cod.php";
 
 if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
     require __DIR__ . '/vendor/autoload.php';
@@ -60,7 +61,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.17.0';
+    public $version = '4.17.1';
 
     public function __construct()
     {
@@ -99,6 +100,8 @@ class MstoreCheckOut
             include_once plugin_dir_path(__FILE__) . "controllers/flutter-customer.php";
             include_once plugin_dir_path(__FILE__) . "functions/video-setting-embed.php";
         }
+
+        add_filter('wp_rest_cache/allowed_endpoints', array($this, 'wprc_add_flutter_api_endpoints'));
 
         $order = filter_has_var(INPUT_GET, 'code') && strlen(filter_input(INPUT_GET, 'code')) > 0 ? true : false;
         if ($order) {
@@ -229,6 +232,20 @@ class MstoreCheckOut
         }
     }
 
+    public function wprc_add_flutter_api_endpoints($allowed_endpoints){
+       if ( ! isset( $allowed_endpoints[ 'wc/v3' ] ) || ! in_array( 'products', $allowed_endpoints[ 'wc/v3' ] ) ) {
+            $allowed_endpoints[ 'wc/v3' ][] = 'products';
+            $allowed_endpoints[ 'wc/v3' ][] = 'products/categories';
+            $allowed_endpoints[ 'wc/v3' ][] = 'products/attributes';
+        }
+        if ( ! isset( $allowed_endpoints[ 'wc/v2' ] ) || ! in_array( 'products', $allowed_endpoints[ 'wc/v2' ] ) ) {
+            $allowed_endpoints[ 'wc/v2' ][] = 'products';
+            $allowed_endpoints[ 'wc/v2' ][] = 'products/categories';
+            $allowed_endpoints[ 'wc/v2' ][] = 'products/attributes';
+        }
+        return $allowed_endpoints;
+    }
+    
     public function filter_avatar($url, $id_or_email, $args)
     {
         $finder = false;

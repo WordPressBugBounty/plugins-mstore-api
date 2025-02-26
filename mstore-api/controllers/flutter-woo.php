@@ -827,12 +827,15 @@ class FlutterWoo extends FlutterBaseController
             }
             WC()->session->set('chosen_shipping_methods', $shippings);
         }
+        add_filter('woocommerce_is_checkout', '__return_true');
         $payment_methods = WC()->payment_gateways->get_available_payment_gateways();
-        $this->remove_item_in_cart();
         $results = [];
         foreach ($payment_methods as $key => $value) {
-            $results[] = ["id" => $value->id, "title" => $value->title, "method_title" => $value->method_title, "description" => $value->description];
+            $result = ["id" => $value->id, "title" => $value->title, "method_title" => $value->method_title, "description" => $value->description];
+            $results[] = apply_filters( 'flutter_woo_payment_method_response', $result, $value, WC()->cart );
         }
+        $this->remove_item_in_cart();
+        add_filter('woocommerce_is_checkout', '__return_false');
         return $results;
     }
 
@@ -1251,7 +1254,7 @@ class FlutterWoo extends FlutterBaseController
     {
         //Validate review product for order
         if(isset($request['comment_meta']) && is_array($request['comment_meta']) && $request['comment_meta']['order_id']){
-            $cookie = $request->get_header("User-Cookie");
+            $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
             if (isset($cookie) && $cookie != null) {
                 $user_id = validateCookieLogin($cookie);
                 if (is_wp_error($user_id)) {

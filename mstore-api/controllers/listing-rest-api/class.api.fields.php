@@ -166,6 +166,14 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     'get_post_gallery_images_listingPro'
                 ) ,
             ));
+        
+            register_rest_route('wp/v2', '/lp-reviews/(?P<listing_id>\d+)', array(
+                'methods' => 'GET',
+                'callback' => array($this, 'get_listingpro_reviews_by_id'),
+                'permission_callback' => function () {
+                    return true;
+                }
+            ));
         }
 
         // Listeo
@@ -602,6 +610,48 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
         }
         return $slots;
+    }
+
+    // ListingPro theme functions
+    public function get_listingpro_reviews_by_id(WP_REST_Request $request) {
+        $listing_id = $request['listing_id'];
+        $page = max(1, absint($request->get_param('page') ?: 1));
+        $per_page = absint($request->get_param('per_page') ?: 100);
+        
+        $query = new WP_Query([
+            'post_type' => 'lp-reviews',
+            'posts_per_page' => $per_page,
+            'offset' => ($page - 1) * $per_page,
+            'meta_query' => [[
+                'key' => 'lp_listingpro_options',
+                'value' => serialize($request['listing_id']),
+                'compare' => 'LIKE'
+            ]]
+        ]);
+        
+        $results = [];
+        while ($query->have_posts()) {
+            $query->the_post();
+            $post_id = get_the_ID();
+            $author_id = get_post_field('post_author');
+            $avatar = get_user_meta($author_id, 'user_avatar', true);
+            $avatar_url = (!empty($avatar) && !is_bool($avatar)) ? $avatar[0] : get_avatar_url($author_id);
+            
+            $results[] = [
+                'id' => $post_id,
+                'title' => get_the_title(),
+                'content' => get_the_content(),
+                'date' => get_the_date('Y-m-d\TH:i:s'),
+                'rating' => get_post_meta($post_id, 'lp_listingpro_options', true)['rating'] ?? 0,
+                'author_name' => $this->get_author_meta(['author' => $author_id]),
+                'author_email' => ($user = get_user_by('ID', $author_id)) ? $user->user_email : '',
+                'author_avatar' => $avatar_url ?: '',
+                'gallery_images' => $this->get_post_gallery_images_listingPro(['id' => $post_id])
+            ];
+        }
+
+        wp_reset_postdata();
+        return $results;
     }
 
     public function get_payment_methods($object)

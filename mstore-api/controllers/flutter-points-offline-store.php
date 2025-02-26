@@ -140,7 +140,7 @@ class FlutterPointsOfflineStore extends FlutterBaseController
 
     // Permission check for adding and subtracting points via API
     function osp_api_manager_permission_check($request) {
-        $cookie = $request->get_header("User-Cookie");
+        $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
         $user_id = validateCookieLogin($cookie);
         if (is_wp_error($user_id)) {
             return false;
@@ -156,7 +156,7 @@ class FlutterPointsOfflineStore extends FlutterBaseController
     }
 
     function osp_api_auth_permission_check($request) {
-        $cookie = $request->get_header("User-Cookie");
+        $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
         $user_id = validateCookieLogin($cookie);
         if (is_wp_error($user_id)) {
             return false;

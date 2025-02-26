@@ -176,21 +176,21 @@ class FlutterMultiVendor
 
     public function flutter_create_product($request)
     {
-        $request["cookie"] = $request->get_header("User-Cookie");
+        $request["cookie"] = get_header_user_cookie($request->get_header("User-Cookie"));
         $vendor = new FlutterVendor();
         return $vendor->flutter_create_product($request);
     }
 
     public function flutter_delete_product($request)
     {
-        $request["cookie"] = $request->get_header("User-Cookie");
+        $request["cookie"] = get_header_user_cookie($request->get_header("User-Cookie"));
         $vendor = new FlutterVendor();
         return $vendor->flutter_delete_product($request);
     }
 
     public function flutter_get_products($request)
     {
-        $request["cookie"] = $request->get_header("User-Cookie");
+        $request["cookie"] = get_header_user_cookie($request->get_header("User-Cookie"));
         $vendor = new FlutterVendor();
         return $vendor->flutter_get_products($request);
     }
@@ -215,7 +215,7 @@ class FlutterMultiVendor
 
     public function flutter_get_vendor_orders($request)
     {
-        $request["cookie"] = $request->get_header("User-Cookie");
+        $request["cookie"] = get_header_user_cookie($request->get_header("User-Cookie"));
         $vendor = new FlutterVendor();
         return $vendor->flutter_get_vendor_orders($request);
     }

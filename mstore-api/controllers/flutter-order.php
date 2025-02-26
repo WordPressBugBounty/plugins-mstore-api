@@ -117,7 +117,7 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
 
     function custom_update_item_permissions_check($request)
     {
-        $cookie = $request->get_header("User-Cookie");
+        $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
         $json = file_get_contents('php://input');
         $params = json_decode($json, TRUE);
         if (isset($cookie) && $cookie != null) {
@@ -201,6 +201,86 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
 		    $request->set_body_params( $params );
         }
         /************************/
+
+        // Same process from the function WC_AJAX()->update_order_review in the
+        // file wp-content/plugins/woocommerce/includes/class-wc-ajax.php
+        $billing = isset($params['billing']) ? $params['billing'] : NULL;
+        $shipping = isset($params['shipping']) ? $params['shipping'] : $billing;
+
+        if (isset($params["customer_id"]) && $params["customer_id"] != 0) {
+            $user_id = $params["customer_id"];
+
+            if (isset($billing)) {
+                if (isset($billing["first_name"]) && !empty($billing["first_name"])) {
+                    update_user_meta($user_id, 'billing_first_name', $billing["first_name"]);
+                }
+                if (isset($billing["last_name"]) && !empty($billing["last_name"])) {
+                    update_user_meta($user_id, 'billing_last_name', $billing["last_name"]);
+                }
+                if (isset($billing["company"]) && !empty($billing["company"])) {
+                    update_user_meta($user_id, 'billing_company', $billing["company"]);
+                }
+                if (isset($billing["address_1"]) && !empty($billing["address_1"])) {
+                    update_user_meta($user_id, 'billing_address_1', $billing["address_1"]);
+                }
+                if (isset($billing["address_2"]) && !empty($billing["address_2"])) {
+                    update_user_meta($user_id, 'billing_address_2', $billing["address_2"]);
+                }
+                if (isset($billing["city"]) && !empty($billing["city"])) {
+                    update_user_meta($user_id, 'billing_city', $billing["city"]);
+                }
+                if (isset($billing["state"]) && !empty($billing["state"])) {
+                    update_user_meta($user_id, 'billing_state', $billing["state"]);
+                }
+                if (isset($billing["postcode"]) && !empty($billing["postcode"])) {
+                    update_user_meta($user_id, 'billing_postcode', $billing["postcode"]);
+                }
+                if (isset($billing["country"]) && !empty($billing["country"])) {
+                    update_user_meta($user_id, 'billing_country', $billing["country"]);
+                }
+                if (isset($billing["email"]) && !empty($billing["email"])) {
+                    update_user_meta($user_id, 'billing_email', $billing["email"]);
+                }
+                if (isset($billing["phone"]) && !empty($billing["phone"])) {
+                    update_user_meta($user_id, 'billing_phone', $billing["phone"]);
+                }
+            }
+            if (isset($shipping)) {
+                if (isset($shipping["first_name"]) && !empty($shipping["first_name"])) {
+                    update_user_meta($user_id, 'shipping_first_name', $shipping["first_name"]);
+                }
+                if (isset($shipping["last_name"]) && !empty($shipping["last_name"])) {
+                    update_user_meta($user_id, 'shipping_last_name', $shipping["last_name"]);
+                }
+                if (isset($shipping["company"]) && !empty($shipping["company"])) {
+                    update_user_meta($user_id, 'shipping_company', $shipping["company"]);
+                }
+                if (isset($shipping["address_1"]) && !empty($shipping["address_1"])) {
+                    update_user_meta($user_id, 'shipping_address_1', $shipping["address_1"]);
+                }
+                if (isset($shipping["address_2"]) && !empty($shipping["address_2"])) {
+                    update_user_meta($user_id, 'shipping_address_2', $shipping["address_2"]);
+                }
+                if (isset($shipping["city"]) && !empty($shipping["city"])) {
+                    update_user_meta($user_id, 'shipping_city', $shipping["city"]);
+                }
+                if (isset($shipping["state"]) && !empty($shipping["state"])) {
+                    update_user_meta($user_id, 'shipping_state', $shipping["state"]);
+                }
+                if (isset($shipping["postcode"]) && !empty($shipping["postcode"])) {
+                    update_user_meta($user_id, 'shipping_postcode', $shipping["postcode"]);
+                }
+                if (isset($shipping["country"]) && !empty($shipping["country"])) {
+                    update_user_meta($user_id, 'shipping_country', $shipping["country"]);
+                }
+                if (isset($shipping["email"]) && !empty($shipping["email"])) {
+                    update_user_meta($user_id, 'shipping_email', $shipping["email"]);
+                }
+                if (isset($shipping["phone"]) && !empty($shipping["phone"])) {
+                    update_user_meta($user_id, 'shipping_phone', $shipping["phone"]);
+                }
+            }
+        }
 
         $response = $this->create_item($request);
         if(is_wp_error($response)){
