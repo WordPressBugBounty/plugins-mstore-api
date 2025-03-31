@@ -16,7 +16,25 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
     public function __construct()
     {
+        // Delay theme detection to init hook to avoid premature textdomain loading
+        add_action('init', array($this, 'detect_theme'));
 
+        add_action('init', array(
+            $this,
+            'add_custom_type_to_rest_api'
+        ));
+        
+        add_action('rest_api_init', array(
+            $this,
+            'register_add_more_fields_to_rest_api'
+        ));
+    }
+    
+    /**
+     * Detect the theme and set related properties
+     */
+    public function detect_theme()
+    {
         $theme = wp_get_theme(get_template());
         $this->_template = strtolower($theme->get('Name'));
 
@@ -44,15 +62,6 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         if($this->_isListeo != 1 && $this->_isListingPro != 1 && $this->_isListable != 1 && $this->_isListify != 1){
             $this->_isMyListing = 1;
         }
-
-        add_action('init', array(
-            $this,
-            'add_custom_type_to_rest_api'
-        ));
-        add_action('rest_api_init', array(
-            $this,
-            'register_add_more_fields_to_rest_api'
-        ));
 
         if($this->_isListeo){
              add_filter('rest_listing_query', array(
@@ -2163,6 +2172,21 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 parent::__construct('job_listing');
             }
 
+            // Delay theme detection to init hook to avoid premature textdomain loading
+            add_action('init', array($this, 'detect_theme'));
+
+            // Register REST API endpoints
+            add_action('rest_api_init', array(
+                $this,
+                'register_add_more_fields_to_rest_api_listing'
+            ));
+        }
+
+        /**
+         * Detect the theme and set related properties
+         */
+        public function detect_theme() 
+        {
             $isChild = strstr(strtolower(wp_get_theme()), "child");
             if ($isChild == 'child') {
                 $string = explode(" ", wp_get_theme());
@@ -2178,11 +2202,6 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             $this->_isListable = $this->_template == $this->_listable ? 1 : 0;
             $this->_isListify = $this->_template == $this->_listify ? 1 : 0;
             $this->_isMyListing = $this->_template == $this->_myListing ? 1 : 0;
-
-            add_action('rest_api_init', array(
-                $this,
-                'register_add_more_fields_to_rest_api_listing'
-            ));
         }
 
         public function register_add_more_fields_to_rest_api_listing()
@@ -2305,12 +2324,14 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
         public function __construct()
         {
-            /* extends from parent */
-            parent::__construct($this->_isListingPro ? 'listing' : 'job_listing');
+            // Initialize rest_api_init hook immediately
             add_action('rest_api_init', array(
                 $this,
                 'register_fields_for_search_advance'
             ));
+            
+            // Call parent constructor to ensure proper initialization
+            parent::__construct();
         }
 
         /*

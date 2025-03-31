@@ -1025,9 +1025,9 @@ function buildCartItemData($line_items, $callback){
 
                 $attributes = [];
                 if (isset($item["meta_data"])) {
-                    foreach ($item["meta_data"] as $item) {
-                        if($item["value"] != null){
-                            $attributes[strtolower($item["key"])] = $item["value"];
+                    foreach ($item["meta_data"] as $meta_data_item) {
+                        if($meta_data_item["value"] != null){
+                            $attributes[strtolower($meta_data_item["key"])] = $meta_data_item["value"];
                         }
                     }
                 }

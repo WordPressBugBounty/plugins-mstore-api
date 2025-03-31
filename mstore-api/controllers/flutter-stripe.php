@@ -66,6 +66,7 @@ class FlutterStripe extends FlutterBaseController
         $capture_method = sanitize_text_field($body['captureMethod']);
         $return_url = sanitize_text_field($body['returnUrl']);
         $email = sanitize_text_field($body['email']);
+        $payment_method_types = sanitize_text_field($body['payment_method_types']);
 
         $order  = wc_get_order( $order_id );
 		if ( is_a( $order, 'WC_Order' ) ) {
@@ -76,7 +77,7 @@ class FlutterStripe extends FlutterBaseController
         $params = [
             'amount'               => WC_Stripe_Helper::get_stripe_amount( $amount, strtolower( $currency ) ),
             'currency'             => strtolower( $currency ),
-            'payment_method_types' => ['card'],
+            'payment_method_types' => isset($payment_method_types) && !empty($payment_method_types) ? $payment_method_types : ['card'],
             'capture_method'       => $capture_method == 'automatic' ? 'automatic' : 'manual',
             'metadata'             => ['order_id'=>$order_id],
             'description'          => $email,

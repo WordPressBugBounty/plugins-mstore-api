@@ -1,6 +1,7 @@
 <?php
 require_once(__DIR__ . '/flutter-base.php');
 require_once(__DIR__ . '/helpers/apple-sign-in-helper.php');
+require_once(__DIR__ . '/helpers/facebook-jwt-helper.php');
 
 class FlutterUserController extends FlutterBaseController
 {
@@ -697,11 +698,24 @@ class FlutterUserController extends FlutterBaseController
         if (!isset($access_token)) {
             return parent::sendError("invalid_login", "You must include a 'access_token' variable. Get the valid access_token for this app from Facebook API.", 400);
         }
-        $url = 'https://graph.facebook.com/me/?fields=' . $fields . '&access_token=' . $access_token;
 
-        $result = wp_remote_retrieve_body(wp_remote_get($url));
+        $result = [];
 
-        $result = json_decode($result, true);
+        // If token is an AuthenticationToken (in case of limited login for
+        // iOS), validate the JWT and return the payload
+        $jwt = FacebookJWTHelper::validateJWT($access_token);
+
+        if ($jwt['success']) {
+            $decodedPayload = $jwt['decoded']['payload'];
+            $result["email"] = $decodedPayload->email;
+            $result["name"] = $decodedPayload->name;
+            $result["first_name"] = $decodedPayload->given_name;
+            $result["last_name"] = $decodedPayload->family_name;
+        } else {
+            $url = 'https://graph.facebook.com/me/?fields=' . $fields . '&access_token=' . $access_token;
+            $payload = wp_remote_retrieve_body(wp_remote_get($url));
+            $result = json_decode($payload, true);
+        }
 
         if (isset($result["email"])) {
             $user_name = strtolower($result['first_name'] . '.' . $result['last_name']);
