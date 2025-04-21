@@ -407,14 +407,6 @@ class FlutterUserController extends FlutterBaseController
             $referralCodeReq = $params["referral_code"];
         }
 
-        if(array_key_exists('role', $params)){
-            $role = $params["role"];
-        }
-        if (isset($role)) {
-            if (!in_array($role, ['subscriber', 'wcfm_vendor', 'seller', 'wcfm_delivery_boy', 'driver'], true)) {
-                return parent::sendError("invalid_role", "Role is invalid.", 400);
-            }
-        }
         if( isset($params['dokan_enable_selling'])){
 			$dokan_enable_selling  =  $params['dokan_enable_selling'];
 		}
@@ -473,7 +465,15 @@ class FlutterUserController extends FlutterBaseController
                 }
 
                 $default_role = class_exists( 'WooCommerce' ) ? 'customer' : get_option('default_role');
-                $user['role'] = isset($params["role"]) ? sanitize_text_field($params["role"]) : $default_role;
+                if( isset($params['dokan_enable_selling'])){
+                    $user['role'] = 'seller';
+                }else{
+                    if (array_key_exists('role', $params) && in_array($params['role'], ['wcfm_delivery_boy', 'driver'], true)) {
+                        $user['role'] = $params['role'];
+                    }else{
+                        $user['role'] = $default_role;
+                    }
+                }
                 $_POST['user_role'] = $user['role'];//fix to register account with role in listeo
 
                 //

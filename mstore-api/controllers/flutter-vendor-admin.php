@@ -568,7 +568,7 @@ class FlutterVendorAdmin extends FlutterBaseController
                 $taxonomy_terms = get_terms(wc_attribute_taxonomy_name($tax->attribute_name), array('hide_empty' => false, 'orderby' => 'name'));
                 $data['id'] = $tax->attribute_id;
                 $data['label'] = $tax->attribute_label;
-                $data['name'] =  $tax->labels->singular_name;
+                $data['name'] =  isset($tax->labels) ? $tax->labels->singular_name : $tax->attribute_name;
                 foreach ($taxonomy_terms as $term) {
                     $data['options'][] = $term->name;
                     $data['slugs'][] = $term->slug;
