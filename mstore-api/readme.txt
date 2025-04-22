@@ -3,7 +3,7 @@ Contributors:      inspireui
 Tags:              flutter, app builder, app creator, mobile app builder, woocommerce app
 Requires at least: 4.4
 Tested up to:      6.8.0
-Stable tag:        4.17.4
+Stable tag:        4.17.5
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,10 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 1. Click Install.
 
 == Changelog ==
+= 4.17.5 =
+  * Fix register security issue
+  * Support to get attribute image for Variation Swatches
+
 = 4.17.4 =
   * Update for the latest wordpress v6.8
 

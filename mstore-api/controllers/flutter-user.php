@@ -407,9 +407,6 @@ class FlutterUserController extends FlutterBaseController
             $referralCodeReq = $params["referral_code"];
         }
 
-        if( isset($params['dokan_enable_selling'])){
-			$dokan_enable_selling  =  $params['dokan_enable_selling'];
-		}
         if(isset($params['wcfm_membership_application_status'])){
 			$wcfm_membership_application_status = $params['wcfm_membership_application_status'];
 		}
@@ -506,9 +503,8 @@ class FlutterUserController extends FlutterBaseController
             $WCFMvm->send_approval_reminder_admin( $user_id );
         }
 
-        // 'dokan_enable_selling' metadata should be 'yes' or 'no'
-        if (isset($dokan_enable_selling)) {
-            update_user_meta($user_id, 'dokan_enable_selling', $dokan_enable_selling);
+        if (isset($params['dokan_enable_selling'])) {
+            update_user_meta($user_id, 'dokan_enable_selling', 'no');
         }
         $cookie = generateCookieByUserId($user_id,  $seconds);
 

@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.17.4
+ * Version: 4.17.5
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  *
@@ -61,7 +61,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.17.4';
+    public $version = '4.17.5';
 
     public function __construct()
     {
@@ -1234,4 +1234,64 @@ function get_promptpay_qrcode_routes()
             },
         )
     );
+}
+
+// Check if Woo Variation Swatches is active before adding the filter
+if (!function_exists('add_variation_swatches_attribute_images_to_api')) {
+    function add_variation_swatches_attribute_images_to_api($response, $product, $request) {
+        // First check if the plugin is active
+        if (!function_exists('woo_variation_swatches') || !class_exists('Woo_Variation_Swatches')) {
+            return $response;
+        }
+        
+        $data = $response->get_data();
+        
+        // Only proceed if product has attributes
+        if (empty($data['attributes'])) {
+            return $response;
+        }
+        
+        $product_attributes = $product->get_attributes();
+        
+        foreach ($data['attributes'] as $key => $attribute) {
+            $attribute_name = $attribute['name'];
+            $attribute_obj = isset($product_attributes[$attribute_name]) ? $product_attributes[$attribute_name] : null;
+            
+            if ($attribute_obj && $attribute_obj->is_taxonomy()) {
+                $terms = wp_get_post_terms($product->get_id(), $attribute_name, ['fields' => 'all']);
+                
+                foreach ($terms as $term_key => $term) {
+                    // Get image ID from term meta set by Woo Variation Swatches
+                    $image_id = get_term_meta($term->term_id, 'product_attribute_image', true);
+                    
+                    if ($image_id) {
+                        $image_size = woo_variation_swatches()->get_option('attribute_image_size', 'variation_swatches_image_size');
+                        $image_src = wp_get_attachment_image_src($image_id, $image_size);
+                        
+                        if ($image_src) {
+                            // Add image data to the term in the API response
+                            $data['attributes'][$key]['options'][$term_key] = [
+                                'term_id' => $term->term_id,
+                                'name' => $term->name,
+                                'slug' => $term->slug,
+                                'image' => [
+                                    'src' => $image_src[0],
+                                    'width' => $image_src[1],
+                                    'height' => $image_src[2]
+                                ]
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+        
+        $response->set_data($data);
+        return $response;
+    }
+}
+
+// Only add the filter if the function exists (as an extra check)
+if (function_exists('add_variation_swatches_attribute_images_to_api')) {
+    add_filter('woocommerce_rest_prepare_product_object', 'add_variation_swatches_attribute_images_to_api', 10, 3);
 }
