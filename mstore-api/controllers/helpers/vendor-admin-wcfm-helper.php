@@ -530,7 +530,7 @@ class VendorAdminWCFMHelper
                     $image = wp_get_attachment_image_src(
                         get_post_thumbnail_id($product_id)
                     );
-                    if (!is_null($image[0])) {
+                    if (is_array($image) && !is_null($image[0])) {
                         $order["line_items"][$i]["featured_image"] = $image[0];
                     }
                     $order_item = new WC_Order_Item_Product($order["line_items"][$i]["id"]);

@@ -43,9 +43,20 @@ class FlutterBlogHelper
 		if($user_id != $author){
             return new WP_Error("unauthorized", "You are not allowed to do this", array('status' => 401));
 		}
-		if($status == 'publish' || $status == 'published'){
-            return new WP_Error("unauthorized", "You are not allowed to publish this post", array('status' => 401));
+
+        wp_set_current_user( $user_id );
+        if ( !current_user_can( 'edit_posts' ) ) {
+            return new WP_Error("unauthorized", "You are not allowed to create this post", array('status' => 401));
         }
+
+        if ($status == 'publish' || $status == 'published') {
+            if ( !current_user_can( 'publish_posts' ) ) {
+                return new WP_Error("unauthorized", "You are not allowed to publish this post", array('status' => 401));
+            }
+        } else {
+            $status = "draft";
+        }
+        
         $my_post = array(
             'post_author' => $user_id,
             'post_title'   => $title,

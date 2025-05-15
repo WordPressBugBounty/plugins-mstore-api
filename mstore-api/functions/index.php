@@ -147,8 +147,8 @@ function pushNotificationForDeliveryBoy($user_id, $title, $message){
     _pushNotification($user_id, $title, $message, 'mstore_delivery_device_token');
 }
 
-function pushNotificationForVendor($user_id, $title, $message){
-    _pushNotification($user_id, $title, $message, 'mstore_manager_device_token');
+function pushNotificationForVendor($user_id, $title, $message, $data = array()){
+    _pushNotification($user_id, $title, $message, 'mstore_manager_device_token', $data);
 }
 
 function pushNotificationForUser($user_id, $title, $message, $data = array()){
@@ -220,9 +220,10 @@ function sendNewOrderNotificationToVendor($order_seller_id, $order_id)
         $message = "Hi {{name}}, Congratulations, you have received a new order! ";
     }
     $message = str_replace("{{name}}", $user->display_name, $message);
+    $data = ["order_id"=>"$order_id"];
     pushNotificationForUser($order_seller_id, $title, $message);//push notification to vendor who logged in on FluxStore MV
     if (!is_plugin_active('onesignal-free-web-push-notifications/onesignal.php')) {//fix duplicate notification if onesignal
-        pushNotificationForVendor($order_seller_id, $title, $message);//push notification to vendor who logged in on FluxStore Manager
+        pushNotificationForVendor($order_seller_id, $title, $message, $data);//push notification to vendor who logged in on FluxStore Manager
     }
     if (is_plugin_active('wc-multivendor-marketplace/wc-multivendor-marketplace.php')) {
         wcfm_message_on_new_order($order_id);

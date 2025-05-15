@@ -459,6 +459,28 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 return true;
             }
         ));
+
+        register_rest_route('wp/v2', '/get-submit-listing', array(
+            'methods' => 'GET',
+            'callback' => array(
+                $this,
+                'get_submit_listing'
+            ),
+            'permission_callback' => function () {
+                return true;
+            }
+        ));
+
+        register_rest_route('wp/v2', '/get-contact-fields', array(
+            'methods' => 'GET',
+            'callback' => array(
+                $this,
+                'get_contact_fields'
+            ),
+            'permission_callback' => function () {
+                return true;
+            }
+        ));
     }
 
 
@@ -501,7 +523,60 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         }
     }
 
+
+    private function get_icon_url($type) {
+        $icon_id = get_option("listeo_{$type}_type_icon");
+        if ($icon_id) {
+            $icon = wp_get_attachment_image_src($icon_id, 'full');
+            return $icon ? $icon[0] : '';
+        }
+        return '';
+    }
+
+    public function get_submit_listing($request){
+		if ($this->_isListeo) {
+            $response = [
+                'supported_listing_types' => get_option('listeo_listing_types', ['service', 'rental', 'event', 'classifieds']),
+
+                // Type icons
+                'service_type_icon' => $this->get_icon_url('service'),
+                'rental_type_icon' => $this->get_icon_url('rental'),
+                'event_type_icon' => $this->get_icon_url('event'),
+                'classifieds_type_icon' => $this->get_icon_url('classifieds'),
+
+                // Global settings
+                'disable_bookings_module' => (bool)get_option('listeo_bookings_disabled', false),
+                'admin_approval_required_for_new_listings' => (bool)get_option('listeo_new_listing_requires_approval', false),
+                'admin_approval_required_for_editing_listing' => (bool)get_option('listeo_edit_listing_requires_approval', false),
+                'notify_admin_by_mail_about_new_listing_waiting_for_approval' => (bool)get_option('listeo_new_listing_admin_notification', false),
+                'listing_duration_days' => (int)get_option('listeo_default_duration', 30),
+                'listing_images_upload_limit' => (int)get_option('listeo_max_files', 10),
+                'listing_image_maximum_size_mb' => (int)get_option('listeo_max_filesize', 15),
+                'submit_listing_map_center_point' => get_option('listeo_submit_center_point')
+            ];
+
+            return [$response];
+
+        } else {
+            return new WP_Error("not_found",  "get_submit_listing is not implemented", array('status' => 404));
+        }
+    }
+
     public function get_listing_types($request){
+        if ($this->_isListeo) {
+            $supported_types = get_option('listeo_listing_types', ['service', 'rental', 'event', 'classifieds']);
+
+            $types = [];
+            foreach ($supported_types as $type) {
+                $types[] = [
+                    'post_title' => ucfirst($type),
+                    'post_name' => $type,
+                    'icon' => $this->get_icon_url($type),
+                ];
+            }
+            return $types;
+
+        }
         if ($this->_isMyListing) {
             $types = get_posts( [
 				'post_type' => 'case27_listing_type',
@@ -676,6 +751,65 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
         }
         return $slots;
+    }
+
+    public function get_contact_fields() {
+        if ($this->_isListeo) {
+            // Get contact fields from options saved by Listeo_Fields_Editor
+            $contact_fields = get_option('listeo_contact_tab_fields');
+
+            if(empty($contact_fields)) {
+                // If there are no custom fields, get default fields from Listeo_Core_Meta_Boxes
+                $default_fields = Listeo_Core_Meta_Boxes::meta_boxes_contact();
+                if(isset($default_fields['fields'])) {
+                    $contact_fields = $default_fields['fields'];
+                }
+            }
+
+            // Format the data to return via API
+            $formatted_fields = array();
+            if(!empty($contact_fields)) {
+                foreach($contact_fields as $key => $field) {
+                    $formatted_field = array(
+                        'id' => $field['id'],
+                        'name' => $field['name'],
+                        'type' => $field['type'],
+                        'required' => isset($field['required']) ? $field['required'] : false,
+                        'placeholder' => isset($field['placeholder']) ? $field['placeholder'] : '',
+                        'icon' => isset($field['icon']) ? $field['icon'] : '',
+                        'desc' => isset($field['desc']) ? $field['desc'] : '',
+                    );
+
+                    // Handle options for select/multicheck fields
+                    if(isset($field['options']) && !empty($field['options'])) {
+                        if(is_array($field['options'])) {
+                            $formatted_field['options'] = array_map(function($key, $value) {
+                                return array(
+                                    'key' => $key,
+                                    'value' => $value
+                                );
+                            }, array_keys($field['options']), $field['options']);
+                        }
+                    }
+
+                    // Process repeatable fields
+                    if($field['type'] == 'repeatable' && isset($field['options'])) {
+                        $formatted_field['repeatable_fields'] = array_map(function($key, $value) {
+                            return array(
+                                'id' => $key,
+                                'name' => $value
+                            );
+                        }, array_keys($field['options']), $field['options']);
+                    }
+
+                    $formatted_fields[] = $formatted_field;
+                }
+            }
+
+            return $formatted_fields;
+        }
+
+        return new WP_Error("not_found", "get_contact_fields is not implemented", array('status' => 404));
     }
 
     // ListingPro theme functions
@@ -2258,10 +2392,10 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             if ($isChild == 'child') {
                 $string = explode(" ", wp_get_theme());
                 if (count($string) > 1) {
-                    $this->_template = strtolower($string[0] . ' ' . $string[1]);
+                $this->_template = strtolower($string[0] . ' ' . $string[1]);
                 } else {
                     $this->_template = strtolower($string[0]);
-                }
+            }
             } else {
                 $this->_template = strtolower(wp_get_theme());
             }
