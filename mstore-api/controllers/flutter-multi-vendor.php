@@ -129,6 +129,22 @@ class FlutterMultiVendor
                 'permission_callback' => array($this, 'allow_permissions'),
             ),
         ));
+
+        register_rest_route($this->namespace, '/follow-vendor-status', array(
+            array(
+                'methods' => "POST",
+                'callback' => array($this, 'follow_vendor_status'),
+                'permission_callback' => array($this, 'allow_permissions'),
+            ),
+        ));
+
+        register_rest_route($this->namespace, '/toggle-follow-vendor', array(
+            array(
+                'methods' => "POST",
+                'callback' => array($this, 'toggle_follow_vendor'),
+                'permission_callback' => array($this, 'allow_permissions'),
+            ),
+        ));
     }
 
     function allow_permissions()
@@ -236,6 +252,20 @@ class FlutterMultiVendor
     {
         $vendor = new FlutterVendor();
         return $vendor->flutter_get_reviews($request);
+    }
+
+    public function follow_vendor_status($request)
+    {
+        $request["cookie"] = get_header_user_cookie($request->get_header("User-Cookie"));
+        $vendor = new FlutterWCFMHelper();
+        return $vendor->follow_vendor_status($request);
+    }
+
+    public function toggle_follow_vendor($request)
+    {
+        $request["cookie"] = get_header_user_cookie($request->get_header("User-Cookie"));
+        $vendor = new FlutterWCFMHelper();
+        return $vendor->toggle_follow_vendor($request);
     }
 }
 

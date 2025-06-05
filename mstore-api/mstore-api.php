@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.17.6
+ * Version: 4.17.7
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  *
@@ -54,6 +54,7 @@ include_once plugin_dir_path(__FILE__) . "controllers/flutter-iyzico.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-phonepe.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-points-offline-store.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-smart-cod.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-discount-rules.php";
 
 if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
     require __DIR__ . '/vendor/autoload.php';
@@ -61,7 +62,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.17.6';
+    public $version = '4.17.7';
 
     public function __construct()
     {
@@ -644,19 +645,26 @@ function flutter_custom_change_product_attribute($response, $item, $request)
         'hide_empty' => false,
     ]);
 
-    $response->data['terms'] = $options;
-
     // Get list count of attribute terms based on attribute.
     $terms = get_filtered_term_product_counts($request, $taxonomy);
 
     $is_visible = false;
     // Show this attribute if any attribute terms have product quantity > 0
     foreach ($terms as $key => $term) {
-        if ($term['term_count'] > 0) {
+        $count = (int)$term['term_count'];
+        if ($is_visible == false && $count > 0) {
             $is_visible = true;
-            break;
+        }
+        // Update term count for options
+        foreach ($options as $option) {
+            if ($option->term_id == $term['term_count_id']) {
+                $option->count = $count;
+                break;
+            }
         }
     }
+
+    $response->data['terms'] = $options;
 
     $response->data['is_visible'] = $is_visible;
 

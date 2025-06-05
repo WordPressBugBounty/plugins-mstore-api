@@ -274,7 +274,7 @@ class FlutterVendorAdmin extends FlutterBaseController
                         "profile_picture" => $avatar,
                     ];
                 }
-        
+
                 return new WP_REST_Response(
                     [
                         "status" => "success",
@@ -300,15 +300,24 @@ class FlutterVendorAdmin extends FlutterBaseController
             if ($request['platform'] == 'woo' || $request['platform'] == 'dokan') {
                 $order_id = sanitize_text_field($request["wcfm_tracking_order_id"]);
                 $delivery_boy = sanitize_text_field($request["wcfm_delivery_boy"]);
-                $meta_key   = 'ddwc_driver_id';
+
+                if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php')) {
+                    $meta_key = 'lddfw_driverid';
+                }
+                else if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
+                    $meta_key = 'ddwc_driver_id';
+                }
+                else {
+                    return parent::sendError("invalid_plugin", "No delivery plugin found", 400);
+                }
 
                 // Update driver ID for order.
-                update_post_meta( $order_id, $meta_key, $delivery_boy );
+                update_post_meta($order_id, $meta_key, $delivery_boy);
 
                 // Get order.
-                $order = new WC_Order( $order_id );
+                $order = new WC_Order($order_id);
                 // Update order status.
-                $order->update_status( 'driver-assigned' );
+                $order->update_status('driver-assigned');
                 return new WP_REST_Response(
                     [
                         "status" => "success",
@@ -576,7 +585,7 @@ class FlutterVendorAdmin extends FlutterBaseController
                 $data['slug'] ='pa_'.$tax->attribute_name;
 				$data['default'] = true;
                 $attributes[] = $data;
-               
+
             }
         }
         return $attributes;

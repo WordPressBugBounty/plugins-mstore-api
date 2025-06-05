@@ -32,21 +32,21 @@ function verifyPurchaseCode($code)
     $body = wp_remote_retrieve_body($response);
     $body = json_decode($body, true);
 
-    delete_option('mstore_purchase_code'); // remove old key to  fix duplicate re-verify 
+    delete_option('mstore_purchase_code'); // remove old key to  fix duplicate re-verify
 
     if ($success) {
         update_option("mstore_active_random_key", $random_key);
         update_option("mstore_active_hash_code", $body['data']);
         update_option("mstore_purchase_code_key", $code);
     } else {
-        delete_option('mstore_purchase_code_key'); // remove old key to  fix duplicate re-verify 
+        delete_option('mstore_purchase_code_key'); // remove old key to  fix duplicate re-verify
         return $body["message"] ??  $body["error"];
     }
     return $success;
 }
 
 
-function one_signal_push_notification($title = '', $message = '', $user_ids = array()) {   
+function one_signal_push_notification($title = '', $message = '', $user_ids = array()) {
     if(!is_plugin_active('onesignal-free-web-push-notifications/onesignal.php')){
         return false;
     }
@@ -65,7 +65,7 @@ function one_signal_push_notification($title = '', $message = '', $user_ids = ar
     $headings = array(
         "en" => $title
     );
-	
+
 	$external_ids = array();
 	foreach($user_ids as $id){
 		$external_ids[] = strval($id);
@@ -111,7 +111,7 @@ function sendNotificationToUser($userId, $orderId, $previous_status, $next_statu
     }
     $previous_status_label = wc_get_order_status_name( $previous_status );
     $next_status_label = wc_get_order_status_name( $next_status );
-    
+
     if($user && $user->display_name){
         $message = str_replace("{{name}}", $user->display_name, $message);
     }
@@ -175,10 +175,37 @@ function sendNewOrderNotificationToDelivery($order_id, $status)
                 pushNotificationForDeliveryBoy($item->delivery_boy, $title, $message);
             }
         }
-
     }
 
-    if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php')) {
+    if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php')) {
+        $order = wc_get_order($order_id);
+        $driver_id = $order->get_meta('lddfw_driverid');
+        if ($driver_id) {
+            global $WCFM, $wpdb;
+            // include upgrade-functions for maybe_create_table;
+            if (!function_exists('maybe_create_table')) {
+                require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+            }
+            $table_name = $wpdb->prefix . 'delivery_woo_notification';
+            $sql = "CREATE TABLE " . $table_name . "(
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            message text NOT NULL,
+            order_id text NOT NULL,
+            delivery_boy text NOT NULL,
+            created datetime NOT NULL,
+            UNIQUE KEY id (id)
+            );";
+            maybe_create_table($table_name, $sql);
+            pushNotificationForDeliveryBoy($driver_id, $title, $message);
+            $wpdb->insert($table_name, array(
+                'message' => $message,
+                'order_id' => $order_id,
+                'delivery_boy' => $driver_id,
+                'created' => current_time('mysql')
+            ));
+        }
+    }
+    else if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
         $order = wc_get_order($order_id);
         $driver_id = $order->get_meta('ddwc_driver_id');
         if ($driver_id) {
@@ -430,10 +457,25 @@ function addYITHBadgeToMetaResponse($response, $product){
             'key'   => '_yith-wcbm-hide-on-single-product',
             'value' => $hide_on_single,
         );
-        
+
         $response->data['meta_data'] = $meta_data;
     }
     return $response;
+}
+
+function normalizeRestrictedDays($restrictedDays) {
+    if (is_array($restrictedDays)) {
+        $normalized = new stdClass();
+        foreach ($restrictedDays as $day) {
+            $normalized->$day = $day;
+        }
+        return $normalized;
+    } elseif (is_object($restrictedDays)) {
+        return $restrictedDays;
+    } elseif (is_string($restrictedDays) && $restrictedDays === "") {
+        return new stdClass();
+    }
+    return $restrictedDays;
 }
 
 function customProductResponse($response, $object, $request)
@@ -469,7 +511,7 @@ function customProductResponse($response, $object, $request)
 	}else{
 		$response->data['sale_price'] = null;
 	}
-    
+
     if (!empty($woocommerce_wpml->multi_currency) && !empty($woocommerce_wpml->settings['currencies_order'])) {
 
         $type = $response->data['type'];
@@ -492,7 +534,7 @@ function customProductResponse($response, $object, $request)
             $response->data['sale_price'] = current($prices['sale_price']);
             $response->data['min_price'] = wc_get_price_to_display(  $product, array( 'price' => $product->get_variation_price() ) );
             $response->data['max_price'] = wc_get_price_to_display(  $product, array( 'price' => $product->get_variation_price('max') ) );
-            
+
             if(!$response->data['min_price']){
                 $response->data['min_price'] = '0';
             }
@@ -514,7 +556,7 @@ function customProductResponse($response, $object, $request)
 				}
                 $response->data['variation_products'] = $variation_arr;
             }
-            
+
         }
     }
 
@@ -536,7 +578,7 @@ function customProductResponse($response, $object, $request)
                 $attrOptions = empty($attrOptions) ? array_map(function ($v){
                     return ['name'=>$v, 'slug' => $v];
                 },$attr["options"]) : $attrOptions;
-                
+
                 $is_image_type = $is_image_type == true && class_exists( 'Woo_Variation_Swatches_Frontend' );
                 if ($is_image_type) {
                      $attrOptions = array_map(function ($item){
@@ -547,19 +589,19 @@ function customProductResponse($response, $object, $request)
                                 $term = $item->to_array();
                                 $term['image_url'] = esc_url( $image[0] );
                                 return $term;
-                            }   
+                            }
                         }
                         return $item;
                     },$attrOptions);
                 }
-                
+
                 $attributesData[] = array_merge($attr->get_data(), ["label" => $label, "name" => urldecode($key), 'is_image_type' => $is_image_type], ['options' =>$attrOptions]);
             }
         }
         $response->data['attributesData'] = $attributesData;
     }
-    
-    
+
+
     // /* Product Add On */
     if(class_exists('WC_Product_Addons_Helper')){
         if(class_exists('WeDevs_Dokan') && dokan()->is_pro_exists()){
@@ -609,6 +651,9 @@ function customProductResponse($response, $object, $request)
             $response->data['type'] = 'appointment';
             $response->data['appointment_duration'] = $product->get_duration();
             $response->data['appointment_duration_unit'] = $product->get_duration_unit();
+            $response->data['has_staff'] = $product->has_staff() ? true : false;
+            $response->data['has_restricted_days'] = $product->has_restricted_days() ? true : false;
+            $response->data['restricted_days'] = normalizeRestrictedDays($product->get_restricted_days());
         }
     }
 
@@ -626,12 +671,12 @@ function customProductResponse($response, $object, $request)
             $response->data['price']= $sign_up_fee;
         }
     }
-    
+
     /* TeraWallet */
     if ( class_exists( 'WooWallet' ) ) {
         $response->data['is_wallet_product'] =  get_option( '_woo_wallet_recharge_product' ) == (string) $response->data['id'];
     }
-    
+
     /* YITH WooCommerce Barcodes and QR Codes Premium */
     $response = addQRCodeUrlToMetaResponse($response);
 
@@ -664,6 +709,29 @@ function customProductResponse($response, $object, $request)
         }
     }
 
+    // Check if woo-discount-rules is active
+    if (class_exists('Wdr\App\Controllers\ManageDiscount')) {
+        // Get the discounted price using the plugin's API
+        $prices = \Wdr\App\Controllers\ManageDiscount::calculateProductDiscountPrice(false,$product, 1, 0, 'all', true, false);
+        $apply_as_cart_rule = isset($prices['apply_as_cart_rule']) ? $prices['apply_as_cart_rule'] : array('no');
+        if(empty($apply_as_cart_rule) || in_array('no', $apply_as_cart_rule)){
+            $discounted_price = isset($prices['discounted_price']) ? $prices['discounted_price'] : 0;
+            if(!empty($discounted_price)){
+                $response->data['price'] = wc_get_price_to_display($product, array('price' => $discounted_price));
+                $response->data['on_sale'] = true;
+
+                $meta_data = $response->data['meta_data'];
+                $meta_data[] = new WC_Meta_Data(
+                    array(
+                        'key'   =>'_wdr_simple_discount',
+                        'value' => $discounted_price,
+                    )
+                );
+                $response->data['meta_data'] = $meta_data;
+            }
+        }
+    }
+
     $blackListKeys = ['yoast_head','yoast_head_json','_links'];
     $response->data = array_diff_key($response->data,array_flip($blackListKeys));
     return $response;
@@ -683,6 +751,10 @@ function get_filtered_term_product_counts($request, $taxonomy, $term_ids = [], $
 
     if (!is_array($term_ids)) {
         $term_ids = [$term_ids];
+    }
+
+    if (empty($term_ids)) {
+        return [];
     }
 
     $tax_query  = array();
@@ -871,8 +943,8 @@ function getSellerIdsByOrderId($order_id){
             }
         }
     }else{
-        $users_query = new WP_User_Query( array( 
-                    'role' => 'Administrator', 
+        $users_query = new WP_User_Query( array(
+                    'role' => 'Administrator',
                     'fields' => 'ID'
                     ));
         $seller_ids = $users_query->get_results();
@@ -900,7 +972,7 @@ function sendNotificationForOrderStatusUpdated($order_id, $status)
         }
         $message = str_replace("{{name}}", $user->display_name, $message);
         $message = str_replace("{{order}}", $order_id, $message);
-    
+
         pushNotificationForVendor($seller_id, $title, $message);
     }
 }
@@ -941,7 +1013,7 @@ function getCommissionOrderResponse($responseData, $vendor_id){
             $commission = $WCFM->wcfm_vendor_support->wcfm_get_commission_by_order( $order->get_id() );
             if( $commission ) {
                 $vendorEarnings = (float) $commission;
-        
+
                 $gross_sales  = (float) $order->get_total();
                 $total_refund = (float) $order->get_total_refunded();
                 //if( $admin_fee_mode || ( $marketplece == 'dokan' ) ) {
@@ -995,7 +1067,7 @@ function customOrderResponse($response, $object, $request)
         $is_order_delivered = wcfm_is_order_delivered( $response->data['id'] );
         $response->data['delivery_status'] = $is_order_delivered ? 'delivered' : 'pending';
     }
-    
+
     return $response;
 }
 
@@ -1014,7 +1086,7 @@ function cleanupAppointmentCartData($customer_id) {
 				wp_trash_post( $appointment_id );
 			}
 		}
-    }	
+    }
 }
 
 function buildCartItemData($line_items, $callback){
@@ -1048,7 +1120,7 @@ function buildCartItemData($line_items, $callback){
                     }
                     $_POST = $addons;
                 }
-                
+
                 // Check the product variation
                 if (!empty($variationId)) {
                     $productVariable = new WC_Product_Variable($productId);

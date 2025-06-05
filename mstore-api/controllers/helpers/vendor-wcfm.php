@@ -266,6 +266,19 @@ class FlutterWCFMHelper
 
         $wcfm_vendors_json_arr['shop_url'] = wcfmmp_get_store_url($vendor_id);
 
+        $wcfm_min_order_amt = get_user_meta($vendor_id, '_wcfm_min_order_amt', true);
+        if ($wcfm_min_order_amt) {
+            $wcfm_vendors_json_arr['min_order_amt'] = $wcfm_min_order_amt;
+        }
+
+        // Live Chat module
+        if (class_exists('WCFM_Dependencies')) {
+            $wcfm_vendors_json_arr['enable_chat'] = WCFM_Dependencies::wcfmu_plugin_active_check() // WCFM Marketplace Ultimate plugin check
+                && apply_filters('wcfm_is_allow_chatbox', true) // Capability Settings
+                && apply_filters('wcfm_is_pref_chatbox', true) // Module Controller
+                && $WCFM->wcfm_vendor_support->wcfm_vendor_has_capability($vendor_id, 'chatbox'); // Vendor Capability
+        }
+
         return $wcfm_vendors_json_arr;
     }
 
@@ -1255,5 +1268,68 @@ class FlutterWCFMHelper
         }
 
         return $data;
+    }
+
+    public function follow_vendor_status($request)
+    {
+        if (!is_plugin_active('wc-frontend-manager-ultimate/wc_frontend_manager_ultimate.php')) {
+            return new WP_Error("invalid_plugin", "You need to install WCFM Ultimate plugin to use this api", array('status' => 403));
+        }
+
+        $cookie = $request["cookie"];
+        if (isset($request["token"])) {
+            $cookie = urldecode(base64_decode($request["token"]));
+        }
+
+        $user_id = validateCookieLogin($cookie);
+        if (is_wp_error($user_id)) {
+            return $user_id;
+        }
+
+        $vendor_id = $request['vendor_id'];
+
+        $is_following       = false;
+        $user_following_arr = get_user_meta($user_id, '_wcfm_following_list', true);
+        if ($user_id == $vendor_id) {
+            $is_following = true;
+        }
+
+        if ($user_following_arr && is_array($user_following_arr) && in_array($vendor_id, $user_following_arr)) {
+            $is_following = true;
+        }
+
+        return $is_following;
+    }
+
+    public function toggle_follow_vendor($request)
+    {
+        if (!is_plugin_active('wc-frontend-manager-ultimate/wc_frontend_manager_ultimate.php')) {
+            return new WP_Error("invalid_plugin", "You need to install WCFM Ultimate plugin to use this api", array('status' => 403));
+        }
+
+        global $WCFMu;
+
+        $cookie = $request["cookie"];
+        if (isset($request["token"])) {
+            $cookie = urldecode(base64_decode($request["token"]));
+        }
+
+        $user_id = validateCookieLogin($cookie);
+        if (is_wp_error($user_id)) {
+            return $user_id;
+        }
+
+        $_REQUEST['wcfm_ajax_nonce'] = wp_create_nonce('wcfm_ajax_nonce');
+
+        $is_following = $this->follow_vendor_status($request);
+        if ($is_following) {
+            $_POST["followersid"] = $user_id;
+            $_POST["userid"] = $request['vendor_id'];
+            $WCFMu->wcfmu_vendor_followers->wcfmu_vendors_followings_delete();
+        } else {
+            $_POST["user_id"] = $user_id;
+            $_POST["vendor_id"] = $request['vendor_id'];
+            $WCFMu->wcfmu_vendor_followers->wcfmu_vendors_followers_update();
+        }
     }
 }

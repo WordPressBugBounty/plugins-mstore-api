@@ -54,7 +54,24 @@ class DeliveryWooHelper
         $pending_count = 0;
         $total = 0;
 
-        if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php')) {
+        if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php')) {
+            global $wpdb;
+            $table_1 = "{$wpdb->prefix}posts";
+            $table_2 = "{$wpdb->prefix}postmeta";
+            $sql = "SELECT ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.ID = {$table_2}.post_id";
+            $sql .= " WHERE `{$table_2}`.`meta_key` = 'lddfw_driverid' AND `{$table_2}`.`meta_value` = %s";
+            $sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
+
+            $total = count($wpdb->get_results($wpdb->prepare($sql, $user_id)));
+            $sql .= " AND {$table_1}.post_status = 'wc-completed'";
+            $delivered_count = count($wpdb->get_results($wpdb->prepare($sql, $user_id)));
+            $sql = "SELECT ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.ID = {$table_2}.post_id";
+            $sql .= " WHERE `{$table_2}`.`meta_key` = 'lddfw_driverid' AND `{$table_2}`.`meta_value` = %s";
+            $sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
+            $sql .= " AND {$table_1}.post_status != 'wc-completed'";
+            $pending_count = count($wpdb->get_results($wpdb->prepare($sql, $user_id)));
+        }
+        else if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
             global $wpdb;
             $table_1 = "{$wpdb->prefix}posts";
             $table_2 = "{$wpdb->prefix}postmeta";
@@ -88,7 +105,7 @@ class DeliveryWooHelper
         if(isset($order_id)){
             $order_id = sanitize_text_field($order_id);
             if(is_numeric($order_id)){
-                if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php')) {
+                if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
                     $order = wc_get_order($order_id);
                     return new WP_REST_Response(array(
                         'status' => 'success',
@@ -131,7 +148,77 @@ class DeliveryWooHelper
     {
         $api = new WC_REST_Orders_V1_Controller();
         $results = [];
-        if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php')) {
+        if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php')) {
+            $page = 1;
+            $per_page = 10;
+            if (isset($request['page'])) {
+                $page = sanitize_text_field($request['page']);
+                if(!is_numeric($page)){
+                    $page = 1;
+                }
+            }
+            if (isset($request['per_page'])) {
+                $per_page = sanitize_text_field($request['per_page']);
+                if(!is_numeric($per_page)){
+                    $per_page = 10;
+                }
+            }
+            $page = ($page - 1) * $per_page;
+            global $wpdb;
+
+            $table_1 = "{$wpdb->prefix}posts";
+            $table_2 = "{$wpdb->prefix}postmeta";
+            $sql = "SELECT ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.ID = {$table_2}.post_id";
+            $sql .= " WHERE `{$table_2}`.`meta_key` = 'lddfw_driverid' AND `{$table_2}`.`meta_value` = {$user_id}";
+            if (isset($request['status']) && !empty($request['status'])) {
+                $status = sanitize_text_field($request['status']);
+                if ($status == 'pending') {
+                    $sql .= " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery' OR `{$table_1}`.`post_status` = 'wc-processing')";
+                }
+                if ($status == 'delivered') {
+                    $sql .= " AND `{$table_1}`.`post_status` = 'wc-completed'";
+                }
+            } else {
+                $sql .= " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery' OR `{$table_1}`.`post_status` = 'wc-completed' OR `{$table_1}`.`post_status` = 'wc-processing')";
+            }
+            if (isset($request['search'])) {
+                $order_search = sanitize_text_field($request['search']);
+                $sql .= " AND $table_1.`ID` LIKE %s";
+            }
+            $sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
+            $sql .= " GROUP BY $table_1.`ID` ORDER BY $table_1.`ID` DESC LIMIT %d OFFSET %d";
+
+            if(isset($order_search)){
+                $sql = $wpdb->prepare($sql, '%'.$order_search.'%', $per_page, $page);
+            }else{
+                $sql = $wpdb->prepare($sql, $per_page, $page);
+            }
+
+            $items = $wpdb->get_results($sql);
+            foreach ($items as $item) {
+                $order = wc_get_order($item);
+                if (is_bool($order)) {
+                    continue;
+                }
+                $response = $api->prepare_item_for_response($order, $request);
+                $order = $response->get_data();
+                $count = count($order['line_items']);
+                $order['product_count'] = $count;
+                for ($i = 0; $i < $count; $i++) {
+                    $product_id = absint($order['line_items'][$i]['product_id']);
+                    $image = wp_get_attachment_image_src(get_post_thumbnail_id($product_id));
+                    if (!is_null($image[0])) {
+                        $order['line_items'][$i]['featured_image'] = $image[0];
+                    }
+                }
+                $order['delivery_status'] = 'delivered';
+                if ($order['status'] != 'completed') {
+                    $order['delivery_status'] = 'pending';
+                }
+                $results[] = $order;
+            }
+        }
+        else if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
             $page = 1;
             $per_page = 10;
             if (isset($request['page'])) {
@@ -176,7 +263,7 @@ class DeliveryWooHelper
             }else{
                 $sql = $wpdb->prepare($sql, $per_page, $page);
             }
-            
+
             $items = $wpdb->get_results($sql);
             foreach ($items as $item) {
                 $order = wc_get_order($item);
@@ -313,26 +400,45 @@ class DeliveryWooHelper
     }
 
 
-    function set_off_time($user_id, $is_available){
-		if(is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php')){
-			$new_value = 'on';
-			$old_value = '';
-			if($is_available !== 'true'){
-				$new_value = '';
-				$old_value = 'on';
-			}			
-			// Update driver availability.
-			update_user_meta( $user_id, 'ddwc_driver_availability', $new_value, $old_value );
-			$meta_value = get_user_meta( $user_id, 'ddwc_driver_availability', true );
-			    return new WP_REST_Response(array(
+    function set_off_time($user_id, $is_available)
+    {
+        if(is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php')) {
+            $new_value = '1';  // Available
+            $old_value = '0';
+            if ($is_available !== 'true') {
+                $new_value = '0';  // Unavailable
+                $old_value = '1';
+            }
+            // Update driver availability.
+            update_user_meta($user_id, 'lddfw_driver_availability', $new_value, $old_value);
+
+            // Clear any cached data
+            lddfw_delete_cache('driver', $user_id);
+
+            $meta_value = get_user_meta($user_id, 'lddfw_driver_availability', true);
+            return new WP_REST_Response(array(
                 'status' => 'success',
                 'response' => $meta_value,
             ), 200);
-		}
+        } else if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
+            $new_value = 'on';
+            $old_value = '';
+            if($is_available !== 'true'){
+                $new_value = '';
+                $old_value = 'on';
+            }
+            // Update driver availability.
+            update_user_meta($user_id, 'ddwc_driver_availability', $new_value, $old_value);
+            $meta_value = get_user_meta($user_id, 'ddwc_driver_availability', true);
+            return new WP_REST_Response(array(
+                'status' => 'success',
+                'response' => $meta_value,
+            ), 200);
+        }
         return new WP_REST_Response(array(
             'status' => 'unknown-error',
-            'response' => '',        
+            'response' => '',
         ), 400);
-	}
+    }
 }
-    
+

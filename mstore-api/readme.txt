@@ -2,8 +2,8 @@
 Contributors:      inspireui
 Tags:              flutter, app builder, app creator, mobile app builder, woocommerce app
 Requires at least: 4.4
-Tested up to:      6.8.0
-Stable tag:        4.17.6
+Tested up to:      6.8.1
+Stable tag:        4.17.7
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,12 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 1. Click Install.
 
 == Changelog ==
+= 4.17.7 =
+  * Implement discount rules
+  * support show/hide chat module as per vendor
+  * add get follow vendor status api
+  * add toggle follow vendor api
+
 = 4.17.6 =
   * Fix create post security issue
   * Support to response order id for push notification

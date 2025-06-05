@@ -269,7 +269,7 @@ class FlutterUserController extends FlutterBaseController
                 }
             ),
         ));
-        
+
         register_rest_route($this->namespace, '/digits/login', array(
             array(
                 'methods' => 'POST',
@@ -410,7 +410,7 @@ class FlutterUserController extends FlutterBaseController
         if(isset($params['wcfm_membership_application_status'])){
 			$wcfm_membership_application_status = $params['wcfm_membership_application_status'];
 		}
-    
+
         $username = sanitize_user($usernameReq);
         $email = sanitize_email($emailReq);
 
@@ -571,9 +571,15 @@ class FlutterUserController extends FlutterBaseController
             $avatar = $avatar[0];
         }
         $is_driver_available = false;
-        if(is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php')){
-			$is_driver_available = get_user_meta( $user->ID, 'ddwc_driver_availability', true );
-		}else{
+
+        if(is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php')){
+            $is_driver_available = get_user_meta($user->ID, 'lddfw_driver_availability', true);
+        }
+        else if(is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') ||
+                is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')){
+            $is_driver_available = get_user_meta($user->ID, 'ddwc_driver_availability', true);
+        }
+        else{
             $is_driver_available = in_array('administrator',$user->roles) || in_array('wcfm_delivery_boy',$user->roles);
         }
 
@@ -583,7 +589,7 @@ class FlutterUserController extends FlutterBaseController
         // Check for Dokan
         if (is_plugin_active('dokan-lite/dokan.php') || is_plugin_active('dokan-pro/dokan-pro.php')) {
             $dokan_settings = get_option('dokan_selling');
-            $order_status_change = isset($dokan_settings['order_status_change']) ? 
+            $order_status_change = isset($dokan_settings['order_status_change']) ?
                 filter_var($dokan_settings['order_status_change'], FILTER_VALIDATE_BOOLEAN) : false;
         }
 
@@ -592,7 +598,7 @@ class FlutterUserController extends FlutterBaseController
             global $WCFM;
             $order_status_change = $WCFM->wcfm_vendor_support->wcfm_vendor_has_capability($user->ID, 'order_status_update');
         }
-        
+
         // If user is admin, always allow order status change
         if (in_array('administrator', $user->roles)) {
             $order_status_change = true;
@@ -1282,7 +1288,7 @@ class FlutterUserController extends FlutterBaseController
                 $post_index = 'digits_reg_' . $meta_key;
                 $_POST[$post_index] = '1';
             }
-            
+
         }
         $_REQUEST['json'] = 1;
 
@@ -1293,7 +1299,7 @@ class FlutterUserController extends FlutterBaseController
 
     function digits_register_check()
     {
-        if(!function_exists('digits_create_user')) { 
+        if(!function_exists('digits_create_user')) {
             return parent::sendError("plugin_not_found", "Please install  the  DIGITS: Wordpress Mobile Number Signup and Login  plugin", 400);
         }
 
@@ -1326,14 +1332,14 @@ class FlutterUserController extends FlutterBaseController
         $mobuser = getUserFromPhone($mob);
         if ($mobuser != null  || username_exists($mob)) {
             return parent::sendError("existed_mobile", 'Mobile Number already in use!', 400);
-        } 
+        }
 
         return  true;
     }
 
     function digits_register()
     {
-        if(!function_exists('digits_create_user')) { 
+        if(!function_exists('digits_create_user')) {
             return parent::sendError("plugin_not_found", "Please install  the  DIGITS: Wordpress Mobile Number Signup and Login  plugin", 400);
         }
 
@@ -1365,7 +1371,7 @@ class FlutterUserController extends FlutterBaseController
 
     function digits_login_check()
     {
-        if(!function_exists('digits_create_user')) { 
+        if(!function_exists('digits_create_user')) {
             return parent::sendError("plugin_not_found", "Please install  the  DIGITS: Wordpress Mobile Number Signup and Login  plugin", 400);
         }
 
@@ -1384,26 +1390,26 @@ class FlutterUserController extends FlutterBaseController
         $mobuser = getUserFromPhone($mob);
         if ($mobuser == null) {
             return parent::sendError("not_existed_mobile", 'Phone number is not registered!', 400);
-        } 
+        }
 
         return  true;
     }
 
     function digits_login()
     {
-        if(!function_exists('dig_validateMobileNumber')) { 
+        if(!function_exists('dig_validateMobileNumber')) {
             return parent::sendError("plugin_not_found", "Please install  the  DIGITS: Wordpress Mobile Number Signup and Login  plugin", 400);
         }
 
         $this->mstore_digrest_set_variables();
-    
+
         $otp = $_POST['dig_otp'];
         $validateMob = dig_validateMobileNumber($_POST['digregcode'], $_POST['digits_reg_mail'], $otp, null, 1, null, false);
-    
+
         if ($validateMob['success'] === false) {
             return parent::sendError("invalid_data",$validateMob['msg'], 400);
         }
-    
+
         $user = getUserFromPhone($validateMob['countrycode'] . $validateMob['mobile']);
         $cookie = generateCookieByUserId($user->ID);
         $response['wp_user_id'] = $user->ID;
@@ -1415,7 +1421,7 @@ class FlutterUserController extends FlutterBaseController
 
     function digits_send_otp()
     {
-        if(!function_exists('digits_create_user')) { 
+        if(!function_exists('digits_create_user')) {
             return parent::sendError("plugin_not_found", "Please install  the  DIGITS: Wordpress Mobile Number Signup and Login  plugin", 400);
         }
 
@@ -1433,19 +1439,19 @@ class FlutterUserController extends FlutterBaseController
         $_REQUEST['countrycode'] =  $params['country_code'];
         $_REQUEST['mobileNo'] =  $params['mobile'];
         $_REQUEST['type'] =  $params['type'];
-    
+
         $this->mstore_digrest_set_variables();
-    
-    
+
+
         $_REQUEST['csrf'] = wp_create_nonce('dig_form');
         $_POST['csrf'] = wp_create_nonce('dig_form');
-    
+
         do_action('wp_ajax_nopriv_digits_check_mob');
     }
 
     function digits_resend_otp()
     {
-        if(!function_exists('digits_resendotp')) { 
+        if(!function_exists('digits_resendotp')) {
             return parent::sendError("plugin_not_found", "Please install  the  DIGITS: Wordpress Mobile Number Signup and Login  plugin", 400);
         }
 
@@ -1463,17 +1469,17 @@ class FlutterUserController extends FlutterBaseController
         $_REQUEST['countrycode'] =  $params['country_code'];
         $_REQUEST['mobileNo'] =  $params['mobile'];
         $_REQUEST['type'] =  $params['type'];
-    
+
         $this->mstore_digrest_set_variables();
-    
-    
+
+
         $_REQUEST['csrf'] = wp_create_nonce('dig_form');
         $_POST['csrf'] = wp_create_nonce('dig_form');
-    
+
         digits_resendotp();
     }
 
-    
+
     function custom_delete_item_permissions_check($request)
     {
         $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
