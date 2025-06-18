@@ -50,6 +50,16 @@ class FlutterDiscountRules extends FlutterBaseController
         $json = file_get_contents('php://input');
         $body = json_decode($json, TRUE);
 
+        $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
+        if (isset($cookie) && $cookie != null) {
+            $user_id = validateCookieLogin($cookie);
+            if (is_wp_error($user_id)) {
+                return $user_id;
+            }
+            $user = get_userdata($user_id);
+            wp_set_current_user($user_id, $user->user_login);
+        }
+        
         if (null === WC()->session) {
             $session_class = apply_filters('woocommerce_session_handler', 'WC_Session_Handler');
 
