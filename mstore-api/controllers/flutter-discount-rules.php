@@ -58,6 +58,12 @@ class FlutterDiscountRules extends FlutterBaseController
             }
             $user = get_userdata($user_id);
             wp_set_current_user($user_id, $user->user_login);
+            $cookie_elements = explode('|', $cookie);
+            if (count($cookie_elements) == 4) {
+                list($username, $expiration, $token, $hmac) = $cookie_elements;
+                $_COOKIE[LOGGED_IN_COOKIE] = $cookie;
+                wp_set_auth_cookie($user_id, true, '', $token);
+            }
         }
         
         if (null === WC()->session) {
@@ -78,10 +84,12 @@ class FlutterDiscountRules extends FlutterBaseController
 
         $products = $body['line_items'];
 
+        add_filter( 'woocommerce_is_purchasable', '__return_true', 9999 );
         buildCartItemData($products, function($productId, $quantity, $variationId, $attributes, $cart_item_data){
             global $woocommerce;
             $woocommerce->cart->add_to_cart($productId, $quantity, $variationId, $attributes, $cart_item_data);
         });
+        remove_filter( 'woocommerce_is_purchasable', '__return_true' );
         WC()->cart->calculate_totals();
 
         $cart = WC()->cart;

@@ -58,33 +58,37 @@ class DeliveryWooHelper
             global $wpdb;
             $table_1 = "{$wpdb->prefix}posts";
             $table_2 = "{$wpdb->prefix}postmeta";
-            $sql = "SELECT ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.ID = {$table_2}.post_id";
-            $sql .= " WHERE `{$table_2}`.`meta_key` = 'lddfw_driverid' AND `{$table_2}`.`meta_value` = %s";
-            $sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
+            $base_sql = "SELECT ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.ID = {$table_2}.post_id";
+            $base_sql .= " WHERE `{$table_2}`.`meta_key` = 'lddfw_driverid' AND `{$table_2}`.`meta_value` = %s";
+            $base_sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
 
-            $total = count($wpdb->get_results($wpdb->prepare($sql, $user_id)));
-            $sql .= " AND {$table_1}.post_status = 'wc-completed'";
-            $delivered_count = count($wpdb->get_results($wpdb->prepare($sql, $user_id)));
-            $sql = "SELECT ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.ID = {$table_2}.post_id";
-            $sql .= " WHERE `{$table_2}`.`meta_key` = 'lddfw_driverid' AND `{$table_2}`.`meta_value` = %s";
-            $sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
-            $sql .= " AND {$table_1}.post_status != 'wc-completed'";
-            $pending_count = count($wpdb->get_results($wpdb->prepare($sql, $user_id)));
+            $total = count($wpdb->get_results($wpdb->prepare($base_sql . " GROUP BY {$table_1}.ID", $user_id)));
+            $pending_count = count($wpdb->get_results($wpdb->prepare(
+                $base_sql . " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery') GROUP BY {$table_1}.ID", 
+                $user_id
+            )));
+            $delivered_count = count($wpdb->get_results($wpdb->prepare(
+                $base_sql . " AND {$table_1}.post_status = 'wc-completed' GROUP BY {$table_1}.ID",
+                $user_id
+            )));
         }
         else if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
             global $wpdb;
             $table_1 = "{$wpdb->prefix}posts";
             $table_2 = "{$wpdb->prefix}postmeta";
-            $sql = "SELECT ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.ID = {$table_2}.post_id";
-            $sql .= " WHERE `{$table_2}`.`meta_key` = 'ddwc_driver_id' AND `{$table_2}`.`meta_value` = %s";
-            $sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
+            $base_sql = "SELECT ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.ID = {$table_2}.post_id";
+            $base_sql .= " WHERE `{$table_2}`.`meta_key` = 'ddwc_driver_id' AND `{$table_2}`.`meta_value` = %s";
+            $base_sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
 
-            $total = count($wpdb->get_results($wpdb->prepare($sql, $user_id)));
-            $pending_sql = $sql . " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery' OR `{$table_1}`.`post_status` = 'wc-processing')";
-            $delivered_sql = $sql . " AND `{$table_1}`.`post_status` = 'wc-completed'";
-
-            $pending_count = count($wpdb->get_results($wpdb->prepare($pending_sql, $user_id)));
-            $delivered_count = count($wpdb->get_results($wpdb->prepare($delivered_sql, $user_id)));
+            $total = count($wpdb->get_results($wpdb->prepare($base_sql . " GROUP BY {$table_1}.ID", $user_id)));
+            $pending_count = count($wpdb->get_results($wpdb->prepare(
+                $base_sql . " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery' OR `{$table_1}`.`post_status` = 'wc-processing') GROUP BY {$table_1}.ID", 
+                $user_id
+            )));
+            $delivered_count = count($wpdb->get_results($wpdb->prepare(
+                $base_sql . " AND `{$table_1}`.`post_status` = 'wc-completed' GROUP BY {$table_1}.ID",
+                $user_id
+            )));
         }
 
         return new WP_REST_Response(array(

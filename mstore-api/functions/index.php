@@ -732,6 +732,144 @@ function customProductResponse($response, $object, $request)
         }
     }
 
+    /* YITH WooCommerce Product Add-ons */
+    if ( class_exists( 'YITH_WAPO' ) && function_exists( 'YITH_WAPO_DB' ) ) {
+        $product_id = $response->data['id'];
+        $yith_addons_data = array();
+
+        try {
+            // Get the YITH WAPO database instance
+            $wapo_db = YITH_WAPO_DB();
+
+            // Get blocks associated with this product
+            $blocks = $wapo_db->yith_wapo_get_blocks_by_product( $product, null, 'yes' );
+
+            if ( ! empty( $blocks ) ) {
+                foreach ( $blocks as $block_id ) {
+                    // Get addons for each block
+                    $addons = $wapo_db->yith_wapo_get_addons_by_block_id( $block_id, true );
+
+                    if ( ! empty( $addons ) ) {
+                        foreach ( $addons as $addon_obj ) {
+                            // Handle both cases: addon object or addon ID
+                            $addon_id = is_object( $addon_obj ) ? $addon_obj->id : $addon_obj;
+
+                            // Create addon instance to get detailed information
+                            $addon = new YITH_WAPO_Addon( array( 'id' => $addon_id ) );
+
+                            if ( $addon && $addon->get_id() > 0 ) {
+                                $addon_type = $addon->get_type();
+
+                                // Handle special content for HTML types
+                                $title = $addon->get_setting( 'title', '' );
+                                $description = $addon->get_setting( 'description', '' );
+
+                                if ( $addon_type === 'html_text' ) {
+                                    // For html_text, the main content is in 'text_content'
+                                    $text_content = $addon->get_setting( 'text_content', '' );
+                                    if ( empty( $title ) && ! empty( $text_content ) ) {
+                                        $title = $text_content;
+                                    }
+                                } elseif ( $addon_type === 'html_heading' ) {
+                                    // For html_heading, the main content is in 'heading_text'
+                                    $heading_text = $addon->get_setting( 'heading_text', '' );
+                                    if ( empty( $title ) && ! empty( $heading_text ) ) {
+                                        $title = $heading_text;
+                                    }
+                                }
+
+                                $addon_data = array(
+                                    'id' => $addon->get_id(),
+                                    'type' => $addon_type,
+                                    'title' => $title,
+                                    'description' => $description,
+                                    'required' => $addon->get_setting( 'required', 'no' ) === 'yes',
+                                    'options' => array()
+                                );
+
+                                // Add specific fields for HTML types
+                                if ( $addon_type === 'html_text' ) {
+                                    $addon_data['text_content'] = $addon->get_setting( 'text_content', '' );
+                                } elseif ( $addon_type === 'html_heading' ) {
+                                    $addon_data['heading_text'] = $addon->get_setting( 'heading_text', '' );
+                                    $addon_data['heading_type'] = $addon->get_setting( 'heading_type', 'h1' );
+                                    $addon_data['heading_color'] = $addon->get_setting( 'heading_color', '#AA0000' );
+                                }
+
+                                // Get addon options (only for non-HTML types)
+                                if ( ! in_array( $addon_type, array( 'html_text', 'html_heading', 'html_separator' ) ) ) {
+                                    $options = $addon->get_options();
+                                    if ( ! empty( $options ) && isset( $options['label'] ) && is_array( $options['label'] ) ) {
+                                        $option_count = count( $options['label'] );
+                                        for ( $index = 0; $index < $option_count; $index++ ) {
+                                            $option_data = array(
+                                                'id' => $index, // Option ID is the index
+                                                'label' => $addon->get_option( 'label', $index, '' ),
+                                                'price' => $addon->get_price( $index, false ),
+                                                'sale_price' => $addon->get_sale_price( $index, false ),
+                                                'price_type' => $addon->get_option( 'price_type', $index, 'fixed' ),
+                                                'price_method' => $addon->get_option( 'price_method', $index, 'free' )
+                                            );
+
+                                            // Add image if available
+                                            $image = $addon->get_option( 'image', $index, '' );
+                                            if ( ! empty( $image ) ) {
+                                                $option_data['image'] = $image;
+                                            }
+
+                                            // Add tooltip if available
+                                            $tooltip = $addon->get_option( 'tooltip', $index, '' );
+                                            if ( ! empty( $tooltip ) ) {
+                                                $option_data['tooltip'] = $tooltip;
+                                            }
+
+                                            // Add description if available
+                                            $description = $addon->get_option( 'description', $index, '' );
+                                            if ( ! empty( $description ) ) {
+                                                $option_data['description'] = $description;
+                                            }
+
+                                            $addon_data['options'][] = $option_data;
+                                        }
+                                    }
+                                }
+
+                                $yith_addons_data[] = $addon_data;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch ( Exception $e ) {
+            // Log error but don't break the API response
+            error_log( 'YITH Add-ons API Error: ' . $e->getMessage() );
+        }
+
+        // Add the YITH add-ons data to meta_data for consistency with other plugins
+        if ( ! empty( $yith_addons_data ) ) {
+            $meta_data = $response->data['meta_data'];
+
+            // Check if YITH add-ons data already exists to avoid duplicates
+            $yith_addons_exists = false;
+            foreach ( $meta_data as $meta_item ) {
+                if ( $meta_item->get_data()['key'] === '_yith_wapo_addons' ) {
+                    $yith_addons_exists = true;
+                    break;
+                }
+            }
+
+            if ( ! $yith_addons_exists ) {
+                $meta_data[] = new WC_Meta_Data(
+                    array(
+                        'key'   => '_yith_wapo_addons',
+                        'value' => $yith_addons_data,
+                    )
+                );
+                $response->data['meta_data'] = $meta_data;
+            }
+        }
+    }
+    
     $blackListKeys = ['yoast_head','yoast_head_json','_links'];
     $response->data = array_diff_key($response->data,array_flip($blackListKeys));
     return $response;
