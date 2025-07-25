@@ -595,7 +595,7 @@ function customProductResponse($response, $object, $request)
                     },$attrOptions);
                 }
 
-                $attributesData[] = array_merge($attr->get_data(), ["label" => $label, "name" => urldecode($key), 'is_image_type' => $is_image_type], ['options' =>$attrOptions]);
+                $attributesData[] = array_merge($attr->get_data(), ["attribute_key" => $key, "label" => $label, "name" => urldecode($key), 'is_image_type' => $is_image_type], ['options' =>$attrOptions]);
             }
         }
         $response->data['attributesData'] = $attributesData;
@@ -852,7 +852,9 @@ function customProductResponse($response, $object, $request)
             // Check if YITH add-ons data already exists to avoid duplicates
             $yith_addons_exists = false;
             foreach ( $meta_data as $meta_item ) {
-                if ( $meta_item->get_data()['key'] === '_yith_wapo_addons' ) {
+                // Handle both array and WC_Meta_Data object formats
+                $key = is_array( $meta_item ) ? $meta_item['key'] : $meta_item->get_data()['key'];
+                if ( $key === '_yith_wapo_addons' ) {
                     $yith_addons_exists = true;
                     break;
                 }

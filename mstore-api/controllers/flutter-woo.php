@@ -775,7 +775,8 @@ class FlutterWoo extends FlutterBaseController
                     "label" => $rate->get_label(),
                     "cost" => $rate->get_cost(),
                     "taxes" => $rate->get_taxes(),
-                    "shipping_tax" => $rate->get_shipping_tax()
+                    "shipping_tax" => $rate->get_shipping_tax(),
+                    "is_including_tax" => 'incl' === get_option( 'woocommerce_tax_display_cart' )
                 ];
             }
         }

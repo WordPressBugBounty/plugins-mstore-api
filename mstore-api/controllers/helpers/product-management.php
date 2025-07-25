@@ -119,9 +119,15 @@ class ProductManagementHelper
             $p["type"] = $product->get_type();
             $p["on_sale"] = $product->is_on_sale();
             $p["tags"] = wp_get_post_terms($product->get_id(), "product_tag");
+            $p['weight'] = $product->get_weight();
+            $p['dimensions'] = [
+                'length' => $product->get_length(),
+                'width' => $product->get_width(),
+                'height' => $product->get_height(),
+            ];
 
             $attributes = [];
-            foreach ($product->get_attributes() as $attribute) {
+            foreach ($product->get_attributes() as $attribute_key => $attribute) {
                 $attributes[] = [
                     "id" => $attribute["is_taxonomy"]
                         ? wc_attribute_taxonomy_id_by_name($attribute["name"])
@@ -131,6 +137,7 @@ class ProductManagementHelper
                             ? get_taxonomy($attribute["name"])->labels
                             ->singular_name
                             : $attribute["name"],
+                            "attribute_key" => $attribute_key,
                     "position" => (int)$attribute["position"],
                     "visible" => (bool)$attribute["is_visible"],
                     "variation" => (bool)$attribute["is_variation"],
@@ -188,18 +195,43 @@ class ProductManagementHelper
                     $variation_data['manage_stock'] = $variation_p->get_manage_stock();
                     $feature_image = wp_get_attachment_image_src( $variation_p->get_image_id(), 'single-post-thumbnail' );
                     $variation_data['feature_image'] = $feature_image ? $feature_image[0] : null;
-            
+
+                    $variation_data['weight'] = $variation_p->get_weight();
+                    $variation_data['dimensions'] = [
+                        'length' => $variation_p->get_length(),
+                        'width' => $variation_p->get_width(),
+                        'height' => $variation_p->get_height(),
+                    ];
+
                     $attr_arr = array();
                     $variation_attributes = $variation_p->get_attributes();
-                    foreach($variation_attributes as $k=>$v){
+                    foreach($variation_attributes as $taxonomy=>$term_slug){
                         $attr_data = array();
-                        $attr_data['name'] = $k;
-                        $attr_data['slug'] = $v;
-                        $meta = get_post_meta($variation->ID, 'attribute_'.$k, true);
-                        $term = get_term_by('slug', $meta, $k);
-                        if($term){
-                            $attr_data['attribute_name'] = $term->name;
+                        
+                        // Decode taxonomy and term if needed
+                        $decoded_taxonomy = urldecode($taxonomy);
+                        $decoded_term_slug = urldecode($term_slug);
+
+                        if ( taxonomy_exists( $decoded_taxonomy ) ) {
+                            // Get attribute name (label)
+                            $attribute_label = wc_attribute_label( $decoded_taxonomy );
+
+                            // Get term (option) name
+                            $term = get_term_by( 'slug', $decoded_term_slug, $decoded_taxonomy );
+                            if ( $term && ! is_wp_error( $term ) ) {
+                                $option_label = $term->name;
+                            } else {
+                                $option_label = $decoded_term_slug; // fallback
+                            }
+                        } else {
+                            $attribute_label = $decoded_taxonomy;
+                            $option_label = $decoded_term_slug;
                         }
+
+                        $attr_data['name'] = $attribute_label;
+                        $attr_data['attribute_key'] = $taxonomy;
+                        $attr_data['slug'] = $term_slug;
+                        $attr_data['attribute_name'] = $option_label;
                         $attr_arr[]=$attr_data;
                     }
                     $variation_data['attributes_arr'] = $attr_arr;
@@ -316,13 +348,18 @@ class ProductManagementHelper
         $short_description = sanitize_text_field($request["short_description"]);
 
         $tags = sanitize_text_field($request['tags']);
-		
+
         $regular_price = sanitize_text_field($request['regular_price']);
         $sale_price = sanitize_text_field($request['sale_price']);
         $stock_quantity = sanitize_text_field($request['stock_quantity']);
         $manage_stock  = sanitize_text_field($request['manage_stock']);
-		
-		$category_ids  = sanitize_text_field($request['category_ids']);   
+
+        $weight = isset($request['weight']) ? sanitize_text_field($request['weight']) : '';
+        $length = isset($request['length']) ? sanitize_text_field($request['length']) : '';
+        $width = isset($request['width']) ? sanitize_text_field($request['width']) : '';
+        $height = isset($request['height']) ? sanitize_text_field($request['height']) : '';
+
+		$category_ids  = sanitize_text_field($request['category_ids']);
 		
         if(isset($request['featuredImage'])){
             $featured_image = sanitize_text_field($request['featuredImage']);
@@ -494,7 +531,18 @@ class ProductManagementHelper
                     }
                 }
 
-		
+                if (!empty($weight)) {
+                    $product->set_weight($weight);
+                }
+                if (!empty($length)) {
+                    $product->set_length($length);
+                }
+                if (!empty($width)) {
+                    $product->set_width($width);
+                }
+                if (!empty($height)) {
+                    $product->set_height($height);
+                }
 
                 //Description
                 $product->set_short_description($short_description);
@@ -580,6 +628,20 @@ class ProductManagementHelper
                                 ? "publish"
                                 : "private"
                         );
+
+                        if (isset($variation['weight']) && !empty($variation['weight'])) {
+                            $variationProduct->set_weight($variation['weight']);
+                        }
+                        if (isset($variation['length']) && !empty($variation['length'])) {
+                            $variationProduct->set_length($variation['length']);
+                        }
+                        if (isset($variation['width']) && !empty($variation['width'])) {
+                            $variationProduct->set_width($variation['width']);
+                        }
+                        if (isset($variation['height']) && !empty($variation['height'])) {
+                            $variationProduct->set_height($variation['height']);
+                        }
+
                         $variationProduct->save();
 
                         if(isset($variation['wholesale_prices']) && count($variation['wholesale_prices']) > 0){

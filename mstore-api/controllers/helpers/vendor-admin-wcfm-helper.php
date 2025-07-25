@@ -332,7 +332,7 @@ class VendorAdminWCFMHelper
             $p["tags"] = wp_get_post_terms($product->get_id(), "product_tag");
 
             $attributes = [];
-            foreach ($product->get_attributes() as $attribute) {
+            foreach ($product->get_attributes() as $attribute_key => $attribute) {
                 $attributes[] = [
                     "id" => $attribute["is_taxonomy"]
                         ? wc_attribute_taxonomy_id_by_name($attribute["name"])
@@ -342,6 +342,7 @@ class VendorAdminWCFMHelper
                             ? get_taxonomy($attribute["name"])->labels
                             ->singular_name
                             : $attribute["name"],
+                            "attribute_key" => $attribute_key,
                     "position" => (int)$attribute["position"],
                     "visible" => (bool)$attribute["is_visible"],
                     "variation" => (bool)$attribute["is_variation"],
@@ -392,7 +393,6 @@ class VendorAdminWCFMHelper
                     $dataVariation["display_regular_price"] = $p_varation->get_regular_price();
                     $dataVariation["slugs"] = $p_varation->get_attributes();
                     $dataVariation["manage_stock"] = $p_varation->get_manage_stock();
-                    $attributes = $p_varation->get_attributes();
                     $dataVariation["attributes"] = [];
                     foreach ($dataVariation["slugs"] as $key => $value) {
                         foreach ($p["attributesData"] as $item) {
@@ -2668,7 +2668,7 @@ class VendorAdminWCFMHelper
             $p["type"] = $product->get_type();
             $p["on_sale"] = $product->is_on_sale();
             $attributes = [];
-            foreach ($product->get_attributes() as $attribute) {
+            foreach ($product->get_attributes() as $attribute_key => $attribute) {
                 $attributes[] = [
                     "id" => $attribute["is_taxonomy"]
                         ? wc_attribute_taxonomy_id_by_name($attribute["name"])
@@ -2677,6 +2677,7 @@ class VendorAdminWCFMHelper
                         $attribute["name"],
                         $product
                     ),
+                    "attribute_key" => $attribute_key,
                     "position" => (int)$attribute["position"],
                     "visible" => (bool)$attribute["is_visible"],
                     "variation" => (bool)$attribute["is_variation"],

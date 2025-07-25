@@ -392,7 +392,7 @@ class FlutterUserController extends FlutterBaseController
 
     public function register()
     {
-        if (!get_option( 'users_can_register' )) {
+        if (!get_option('users_can_register')) {
             return parent::sendError("disabled_register", "Registration is not enabled.", 400);
         }
         $json = file_get_contents('php://input');
@@ -461,17 +461,17 @@ class FlutterUserController extends FlutterBaseController
                     }
                 }
 
-                $default_role = class_exists( 'WooCommerce' ) ? 'customer' : get_option('default_role');
-                if( isset($params['dokan_enable_selling'])){
+                $default_role = class_exists('WooCommerce') ? 'customer' : get_option('default_role');
+                if (isset($params['dokan_enable_selling'])) {
                     $user['role'] = 'seller';
-                }else{
-                    if (array_key_exists('role', $params) && in_array($params['role'], ['wcfm_delivery_boy', 'driver'], true)) {
+                } else {
+                    if (array_key_exists('role', $params) && in_array($params['role'], ['wcfm_delivery_boy', 'driver', 'owner'], true)) {
                         $user['role'] = $params['role'];
-                    }else{
+                    } else {
                         $user['role'] = $default_role;
                     }
                 }
-                $_POST['user_role'] = $user['role'];//fix to register account with role in listeo
+                $_POST['user_role'] = $user['role']; //fix to register account with role in listeo
 
                 //
                 if (isset($referralCodeReq) && $referralCodeReq) {

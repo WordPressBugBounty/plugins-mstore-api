@@ -134,11 +134,12 @@ class VendorAdminWooHelper
 
                 $attributes = array();
                 $is_variable = false;
-                foreach ($product->get_attributes() as $attribute) {
+                foreach ($product->get_attributes() as $attribute_key => $attribute) {
                     $attributes[] = array(
                         'id' => $attribute['is_taxonomy'] ? wc_attribute_taxonomy_id_by_name($attribute['name']) : 0,
                         'name' => 0 === strpos($attribute['name'], 'pa_') ? get_taxonomy($attribute['name'])
                             ->labels->singular_name : $attribute['name'],
+                            'attribute_key' => $attribute_key,
                         'position' => (int)$attribute['position'],
                         'visible' => (bool)$attribute['is_visible'],
                         'variation' => (bool)$attribute['is_variation'],
@@ -174,7 +175,6 @@ class VendorAdminWooHelper
                         $dataVariation['display_regular_price'] = $p_varation->get_regular_price();
                         $dataVariation['slugs'] = $p_varation->get_attributes();
                         $dataVariation['manage_stock'] = $p_varation->get_manage_stock();
-                        $attributes = $p_varation->get_attributes();
                         $dataVariation['attributes'] = array();
                         foreach ($dataVariation['slugs'] as $key => $value) {
                             foreach ($p['attributesData'] as $item) {
@@ -1305,10 +1305,11 @@ class VendorAdminWooHelper
             $p['type'] = $product->get_type();
             $p['on_sale'] = $product->is_on_sale();
             $attributes = array();
-            foreach ($product->get_attributes() as $attribute) {
+            foreach ($product->get_attributes() as $attribute_key => $attribute) {
                 $attributes[] = array(
                     'id' => $attribute['is_taxonomy'] ? wc_attribute_taxonomy_id_by_name($attribute['name']) : 0,
                     'name' => $this->get_attribute_taxonomy_name($attribute['name'], $product),
+                    'attribute_key' => $attribute_key,
                     'position' => (int)$attribute['position'],
                     'visible' => (bool)$attribute['is_visible'],
                     'variation' => (bool)$attribute['is_variation'],

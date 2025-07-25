@@ -583,6 +583,7 @@ class FlutterVendorAdmin extends FlutterBaseController
                     $data['slugs'][] = $term->slug;
                 }
                 $data['slug'] ='pa_'.$tax->attribute_name;
+                $data['attribute_key'] = strtolower(urlencode($data['slug']));
 				$data['default'] = true;
                 $attributes[] = $data;
 
