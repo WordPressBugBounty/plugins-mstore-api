@@ -567,10 +567,12 @@ function customProductResponse($response, $object, $request)
             if(!is_string($attr)){
                 $check = $attr->is_taxonomy();
                 $is_image_type = false;
+                $is_color_type = false;
                 if ($check) {
                     $taxonomy = $attr->get_taxonomy_object();
                     $label = $taxonomy->attribute_label;
                     $is_image_type = $taxonomy->attribute_type == 'image';
+                    $is_color_type = $taxonomy->attribute_type == 'color';
                 } else {
                     $label = $attr->get_name();
                 }
@@ -595,7 +597,19 @@ function customProductResponse($response, $object, $request)
                     },$attrOptions);
                 }
 
-                $attributesData[] = array_merge($attr->get_data(), ["attribute_key" => $key, "label" => $label, "name" => urldecode($key), 'is_image_type' => $is_image_type], ['options' =>$attrOptions]);
+                $is_color_type = $is_color_type == true && class_exists( 'Woo_Variation_Swatches_Frontend' );
+                if ($is_color_type) {
+                     $attrOptions = array_map(function ($item){
+                        $term = $item->to_array();
+                        $color_value = woo_variation_swatches()->get_frontend()->get_product_attribute_color( $item );
+                        if ($color_value) {
+                            $term['primary_color'] = $color_value;
+                        }
+                        return $term;
+                    },$attrOptions);
+                }
+
+                $attributesData[] = array_merge($attr->get_data(), ["attribute_key" => $key, "label" => $label, "name" => urldecode($key), "slug" => $key, 'is_image_type' => $is_image_type, 'is_color_type' => $is_color_type], ['options' =>$attrOptions]);
             }
         }
         $response->data['attributesData'] = $attributesData;
@@ -871,7 +885,7 @@ function customProductResponse($response, $object, $request)
             }
         }
     }
-    
+
     $blackListKeys = ['yoast_head','yoast_head_json','_links'];
     $response->data = array_diff_key($response->data,array_flip($blackListKeys));
     return $response;
@@ -1061,7 +1075,7 @@ function getSellerIdsByOrderId($order_id){
             $seller_ids[] = $order_seller_id;
         }
     }else if (is_plugin_active('wc-multivendor-marketplace/wc-multivendor-marketplace.php')) {
-        if (function_exists('wcfm_get_vendor_store_by_post')) {
+        if (function_exists('wcfm_get_vendor_id_by_post')) {
             $order = wc_get_order($order_id);
             if (is_a($order, 'WC_Order')) {
                 $items = $order->get_items('line_item');

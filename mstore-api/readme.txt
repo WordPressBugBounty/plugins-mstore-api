@@ -3,7 +3,7 @@ Contributors:      inspireui
 Tags:              flutter, app builder, app creator, mobile app builder, woocommerce app
 Requires at least: 4.4
 Tested up to:      6.8.1
-Stable tag:        4.18.1
+Stable tag:        4.18.2
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,15 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 1. Click Install.
 
 == Changelog ==
+= 4.18.2 =
+  * fix: wrong store data as product return author if not has store
+  * feat: add get_fees api for woocommerce
+  * Support Razorpay api payment
+  * Fix to apply points for webview checkout
+  * Update flutter_get_orders to use Orders V2 Controller
+  * fix(Home): not load include products params
+  *  Add primary_color & slug fields to product attributes
+
 = 4.18.1 =
   * Support checkout fields manager
 

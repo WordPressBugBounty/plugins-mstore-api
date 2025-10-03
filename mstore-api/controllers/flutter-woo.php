@@ -121,6 +121,16 @@ class FlutterWoo extends FlutterBaseController
             ),
         ));
 
+        register_rest_route($this->namespace, '/fees', array(
+            array(
+                'methods' => "POST",
+                'callback' => array($this, 'get_fees'),
+                'permission_callback' => function () {
+                    return parent::checkApiPermission();
+                }
+            ),
+        ));
+
         register_rest_route($this->namespace, '/points', array(
             array(
                 'methods' => "GET",
@@ -1162,6 +1172,73 @@ class FlutterWoo extends FlutterBaseController
         }else{
 			return ["items" => [], "taxes_total" => "0", "is_including_tax" => false];
 		}
+    }
+
+    public function get_fees($request)
+    {
+        $json = file_get_contents('php://input');
+        $body = json_decode($json, TRUE);
+
+        $check = $this->check_prerequisites($request, $body);
+        if (is_wp_error($check)) {
+            return $check;
+        }
+
+        // Shipping info
+        if (isset($body["shipping"])) {
+            $shipping = $body["shipping"];
+            WC()->customer->set_shipping_first_name($shipping["first_name"]);
+            WC()->customer->set_shipping_last_name($shipping["last_name"]);
+            WC()->customer->set_shipping_company($shipping["company"]);
+            WC()->customer->set_shipping_address_1($shipping["address_1"]);
+            WC()->customer->set_shipping_address_2($shipping["address_2"]);
+            WC()->customer->set_shipping_city($shipping["city"]);
+            WC()->customer->set_shipping_state($shipping["state"]);
+            WC()->customer->set_shipping_postcode($shipping["postcode"]);
+            WC()->customer->set_shipping_country($shipping["country"]);
+        }
+
+        // Billing info
+        if (isset($body["billing"])) {
+            $billing = $body["billing"];
+            WC()->customer->set_billing_first_name($billing["first_name"]);
+            WC()->customer->set_billing_last_name($billing["last_name"]);
+            WC()->customer->set_billing_company($billing["company"]);
+            WC()->customer->set_billing_address_1($billing["address_1"]);
+            WC()->customer->set_billing_address_2($billing["address_2"]);
+            WC()->customer->set_billing_city($billing["city"]);
+            WC()->customer->set_billing_state($billing["state"]);
+            WC()->customer->set_billing_postcode($billing["postcode"]);
+            WC()->customer->set_billing_country($billing["country"]);
+            WC()->customer->set_billing_email($billing["email"]);
+            WC()->customer->set_billing_phone($billing["phone"]);
+        }
+
+        // Add products
+        $error = $this->add_items_to_cart($body['line_items']);
+        if (is_string($error)) {
+            return parent::sendError("invalid_item", $error, 400);
+        }
+
+        // Apply coupon if exists
+        if (isset($body['coupon_lines']) && is_array($body['coupon_lines']) && count($body['coupon_lines']) > 0) {
+            WC()->cart->apply_coupon($body['coupon_lines'][0]['code']);
+        }
+
+        // Set shipping method if exists
+        if (isset($body["shipping_lines"]) && !empty($body["shipping_lines"])) {
+            $shippings = [];
+            foreach ($body["shipping_lines"] as $shipping_line) {
+                $shippings[] = $shipping_line["method_id"];
+            }
+            WC()->session->set('chosen_shipping_methods', $shippings);
+        }
+
+        // Calculate totals to apply shipping, taxes, coupons, etc in cart
+        // before getting fees data
+        WC()->cart->calculate_totals();
+
+        return array_values(WC()->cart->get_fees());
     }
 
     public function get_points($request)

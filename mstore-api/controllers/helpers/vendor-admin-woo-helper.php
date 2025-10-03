@@ -206,7 +206,7 @@ class VendorAdminWooHelper
     public function flutter_get_orders($request, $user_id)
     {
         global $wpdb;
-        $api = new WC_REST_Orders_V1_Controller();
+        $api = new WC_REST_Orders_V2_Controller();
         $results = [];
         $page = 1;
         $per_page = 10;
@@ -235,7 +235,7 @@ class VendorAdminWooHelper
             $sql .= " AND ID LIKE %s";
         }
         $sql .= " GROUP BY $table_name.`ID` ORDER BY $table_name.`ID` DESC LIMIT %d OFFSET %d";
- 
+
         $args = array();
         if (isset($request['status'])) {
             $args[] = 'wc-'.sanitize_text_field($request['status']);
@@ -253,7 +253,7 @@ class VendorAdminWooHelper
             if (is_bool($order)) {
                 continue;
             }
-            $response = $api->prepare_item_for_response($order, $request);
+            $response = $api->prepare_object_for_response($order, $request);
             $order = $response->get_data();
             $count = count($order['line_items']);
             $order['product_count'] = $count;
@@ -335,7 +335,7 @@ class VendorAdminWooHelper
 
         $order = wc_get_order($order_id);
         $order->update_status($order_status, '', true);
-        
+
         $note = sanitize_text_field($request['customer_note']);
         if (!empty($note)) {
             $order->add_order_note($note, true, true);
@@ -622,7 +622,7 @@ class VendorAdminWooHelper
     {
         $user = get_userdata($user_id);
         $isSeller = in_array("editor", $user->roles) || in_array("administrator", $user->roles);
-        
+
         $requestStatus = "draft";
         if ($request["status"] != null) {
             $requestStatus = sanitize_text_field($request["status"]);
@@ -648,8 +648,8 @@ class VendorAdminWooHelper
         $backorders = sanitize_text_field($request['backorders']);
         $categories = sanitize_text_field($request['categories']);
         $productAttributes = sanitize_text_field($request['productAttributes']);
-        $variations = sanitize_text_field($request['variations']);      
-        $inventory_delta = sanitize_text_field($request['inventory_delta']);      
+        $variations = sanitize_text_field($request['variations']);
+        $inventory_delta = sanitize_text_field($request['inventory_delta']);
 
         $count = 1;
 
@@ -1021,9 +1021,9 @@ class VendorAdminWooHelper
         $backorders = sanitize_text_field($request['backorders']);
         $categories = sanitize_text_field($request['categories']);
         $productAttributes = sanitize_text_field($request['productAttributes']);
-        $variations = sanitize_text_field($request['variations']);      
-        $inventory_delta = sanitize_text_field($request['inventory_delta']);     
-        $status = sanitize_text_field($request['status']);     
+        $variations = sanitize_text_field($request['variations']);
+        $inventory_delta = sanitize_text_field($request['inventory_delta']);
+        $status = sanitize_text_field($request['status']);
         $count = 1;
 
 

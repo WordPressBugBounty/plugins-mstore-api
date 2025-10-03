@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.18.1
+ * Version: 4.18.2
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  *
@@ -56,6 +56,7 @@ include_once plugin_dir_path(__FILE__) . "controllers/flutter-points-offline-sto
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-smart-cod.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-discount-rules.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-checkout.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-razorpay.php";
 
 if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
     require __DIR__ . '/vendor/autoload.php';
@@ -63,7 +64,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.18.1';
+    public $version = '4.18.2';
 
     public function __construct()
     {
@@ -988,6 +989,22 @@ function flutter_prepare_checkout()
             WC()->session->set('refresh_totals', true);
             WC()->cart->empty_cart();
 
+            if(class_exists('WC_Points_Rewards_Discount')){
+                foreach ($data['fee_lines'] as $fee) {
+                   if($fee['name'] == 'Cart Discount'){
+                        list($points, $monetary_value) = explode(':', get_option('wc_points_rewards_redeem_points_ratio', ''));
+                        $cart_price_rate = floatval($monetary_value);
+                        $cart_points_rate = intval($points);
+
+                        WC()->session->set( 'wc_points_rewards_discount_amount', intval($fee['total']) * $cart_points_rate / $cart_price_rate * (-1) );
+                        // generate and set unique discount code
+                        $discount_code = WC_Points_Rewards_Discount::generate_discount_code();
+                        // apply the discount
+                        WC()->cart->add_discount( $discount_code );
+                   }
+                }
+            }
+            
             $products = $data['line_items'];
 
             buildCartItemData($products, function($productId, $quantity, $variationId, $attributes, $cart_item_data){

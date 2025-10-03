@@ -662,16 +662,24 @@ class FlutterVendor extends FlutterBaseController
     public function prepeare_product_response($response, $object, $request)
     {
         $data = $response->get_data();
-        $author_id = get_post_field('post_author', $data['id']);
+        $product_id = $data['id'];
         if (is_plugin_active('dokan-lite/dokan.php')) {
-            $store = dokan()->vendor->get($author_id);
-            $dataStore = $store->to_array();
-            $dataStore = array_merge($dataStore, apply_filters('dokan_rest_store_additional_fields', [], $store, $request));
-            $data['store'] = $dataStore;
+            $author_id = get_post_field('post_author', $product_id);
+            if ($author_id) {
+                $store = dokan()->vendor->get($author_id);
+                $dataStore = $store->to_array();
+                $dataStore = array_merge($dataStore, apply_filters('dokan_rest_store_additional_fields', [], $store, $request));
+                $data['store'] = $dataStore;
+            }
         }
         if (is_plugin_active('wc-multivendor-marketplace/wc-multivendor-marketplace.php')) {
-            $helper = new FlutterWCFMHelper();
-            $data['store'] = $helper->flutter_get_wcfm_stores_by_id($author_id)->get_data();
+            if (function_exists('wcfm_get_vendor_id_by_post')) {
+                $vendor_id = wcfm_get_vendor_id_by_post($product_id);
+                if ($vendor_id) {
+                    $helper = new FlutterWCFMHelper();
+                    $data['store'] = $helper->flutter_get_wcfm_stores_by_id($vendor_id)->get_data();
+                }
+            }
         }
 
         $response->set_data($data);

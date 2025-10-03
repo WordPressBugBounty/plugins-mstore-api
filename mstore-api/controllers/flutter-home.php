@@ -272,6 +272,8 @@ class FlutterHome extends WP_REST_Controller
             $params['on_sale'] = true;
         } else if ($include != null && is_string($include)) {
             $params['include'] = explode(',', $include);
+        } else if ($include != null && is_array($include)) {
+            $params['include'] = $include;
         }
         $limit = get_option("mstore_limit_product");
         $limit = (!isset($limit) || $limit == false) ? 10 : $limit;

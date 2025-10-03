@@ -204,6 +204,8 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
 
         // Same process from the function WC_AJAX()->update_order_review in the
         // file wp-content/plugins/woocommerce/includes/class-wc-ajax.php
+        // Or WC_Checkout()->process_customer in the file
+        // wp-content/plugins/woocommerce/includes/class-wc-checkout.php
         $billing = isset($params['billing']) ? $params['billing'] : NULL;
         $shipping = isset($params['shipping']) ? $params['shipping'] : $billing;
 

@@ -61,10 +61,22 @@ class FlutterCheckout extends FlutterBaseController
         ));
     }
 
-    private function array_omit(array $source, array $fields): array {
-        $result = array_map(function($item) use ($fields) {
+    private function array_omit(string $field_type, array $source, array $fields): array {
+        $keys = array_keys($source);
+        $result = array_map(function($key) use ($fields, $source, $field_type) {
+            $item = $source[$key];
+            if(!isset($item['key'])){
+                if(strpos($key, $field_type . '_') === false){
+                    $item['key'] = $field_type . '_' . $key;
+                }else{
+                    $item['key'] = $key;
+                }
+            }
+            if(!isset($item['name'])){
+                $item['name'] = str_replace($field_type . '_', '', $key);
+            }
             return array_diff_key($item, array_flip($fields));
-        }, $source);
+        }, $keys);
         return $result;
     }
 
@@ -77,9 +89,9 @@ class FlutterCheckout extends FlutterBaseController
         $omit_fields = ['class', 'position', 'extra_class'];
 
         return  [
-            'billing' => $this->array_omit(array_values($billing_fields), $omit_fields),
-            'shipping' => $this->array_omit(array_values($shipping_fields), $omit_fields),
-            'additional' => $this->array_omit(array_values($additional_fields), $omit_fields),
+            'billing' => $this->array_omit('billing', $billing_fields, $omit_fields),
+            'shipping' => $this->array_omit('shipping',$shipping_fields, $omit_fields),
+            'additional' => $this->array_omit('additional',$additional_fields, $omit_fields),
         ];
     }
 
@@ -138,9 +150,9 @@ class FlutterCheckout extends FlutterBaseController
             }
 
             return [
-                'billing' => $billing_data,
-                'shipping' => $shipping_data,
-                'additional' => $additional_data
+                'billing' => empty($billing_data) ? (object)[] : $billing_data,
+                'shipping' => empty($shipping_data) ? (object)[] : $shipping_data,
+                'additional' => empty($additional_data) ? (object)[] : $additional_data
             ];
         } else {
             return parent::sendError("cookie_required","User-Cookie is required", 400);

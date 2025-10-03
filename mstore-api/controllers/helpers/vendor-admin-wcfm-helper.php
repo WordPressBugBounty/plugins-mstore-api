@@ -293,7 +293,7 @@ class VendorAdminWCFMHelper
         } else {
             $sql = $wpdb->prepare($sql, $vendor_id, $limit, $page);
         }
-        
+
         $item = $wpdb->get_results($sql);
 
         $products_arr = [];
@@ -307,8 +307,8 @@ class VendorAdminWCFMHelper
                     $image_arr[] = $image[0];
                 }
             }
-			
-			
+
+
 
             $image = wp_get_attachment_image_src($p["image_id"], "full");
             if (!is_null($image[0])) {
@@ -426,7 +426,7 @@ class VendorAdminWCFMHelper
     public function flutter_get_orders($request, $user_id)
     {
         $profile_pic = [];
-        $api = new WC_REST_Orders_V1_Controller();
+        $api = new WC_REST_Orders_V2_Controller();
         $results = [];
         if (
             is_plugin_active(
@@ -486,7 +486,7 @@ class VendorAdminWCFMHelper
                 }
             }
             $sql .= " GROUP BY $table_name.`order_id` ORDER BY $table_name.`order_id` DESC LIMIT %d OFFSET %d";
-            
+
             $args = [$user_id];
             if (isset($request["status"])) {
                 $args[] = sanitize_text_field($request["status"]);
@@ -505,7 +505,7 @@ class VendorAdminWCFMHelper
                     continue;
                 }
 
-                $response = $api->prepare_item_for_response($order, $request);
+                $response = $api->prepare_object_for_response($order, $request);
                 $order = $response->get_data();
                 $count = count($order["line_items"]);
                 $order["product_count"] = $count;
@@ -525,7 +525,7 @@ class VendorAdminWCFMHelper
                     }
 					$commission_data = get_post_meta($product_id, '_wcfmmp_commission', true);
 					if(!empty($commission_data)){
-						$order["line_items"][$i]['commission'] = $commission_data;	
+						$order["line_items"][$i]['commission'] = $commission_data;
 					}
                     $image = wp_get_attachment_image_src(
                         get_post_thumbnail_id($product_id)
@@ -1950,8 +1950,8 @@ class VendorAdminWCFMHelper
         $backorders = sanitize_text_field($request['backorders']);
         $categories = sanitize_text_field($request['categories']);
         $productAttributes = sanitize_text_field($request['productAttributes']);
-        $variations = sanitize_text_field($request['variations']);      
-        $inventory_delta = sanitize_text_field($request['inventory_delta']);      
+        $variations = sanitize_text_field($request['variations']);
+        $inventory_delta = sanitize_text_field($request['inventory_delta']);
 
         $count = 1;
 
@@ -2346,9 +2346,9 @@ class VendorAdminWCFMHelper
         $backorders = sanitize_text_field($request['backorders']);
         $categories = sanitize_text_field($request['categories']);
         $productAttributes = sanitize_text_field($request['productAttributes']);
-        $variations = sanitize_text_field($request['variations']);      
-        $inventory_delta = sanitize_text_field($request['inventory_delta']);     
-        $status = sanitize_text_field($request['status']);     
+        $variations = sanitize_text_field($request['variations']);
+        $inventory_delta = sanitize_text_field($request['inventory_delta']);
+        $status = sanitize_text_field($request['status']);
         $count = 1;
 
         if ($product->get_type() != $type) {
@@ -2367,7 +2367,7 @@ class VendorAdminWCFMHelper
             wp_set_object_terms($product->get_id(), $tags, "product_tag");
         }
 
-    
+
 
         if (isset($featured_image)) {
             if (!empty($featured_image)) {
@@ -2866,7 +2866,7 @@ class VendorAdminWCFMHelper
             $variation_id = $line_item->get_variation_id();
 
             $sql = $wpdb->prepare(
-                "INSERT INTO `{$wpdb->prefix}wcfm_delivery_orders` 
+                "INSERT INTO `{$wpdb->prefix}wcfm_delivery_orders`
                                   ( vendor_id
                                   , order_id
                                   , customer_id
@@ -2924,7 +2924,7 @@ class VendorAdminWCFMHelper
                 $value = $gross_sales_total;
                 $wpdb->query(
                     $wpdb->prepare(
-                        "INSERT INTO `{$wpdb->prefix}wcfm_delivery_orders_meta` 
+                        "INSERT INTO `{$wpdb->prefix}wcfm_delivery_orders_meta`
 									( order_delivery_id
 									, `key`
 									, `value`
@@ -2997,7 +2997,7 @@ class VendorAdminWCFMHelper
             }
 
             // Deivery Boy Notification
-          
+
             if (apply_filters("wcfm_is_allow_itemwise_notification", true)) {
                 $wcfm_messages = sprintf(
                     __(

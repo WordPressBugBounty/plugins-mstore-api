@@ -328,7 +328,7 @@ class VendorAdminDokanHelper
 
     public function flutter_get_orders($request, $user_id)
     {
-        $api = new WC_REST_Orders_V1_Controller();
+        $api = new WC_REST_Orders_V2_Controller();
         $page = 1;
         $per_page = 10;
         if (isset($request['page'])) {
@@ -376,7 +376,7 @@ class VendorAdminDokanHelper
                 if (is_bool($order)) {
                     continue;
                 }
-                $response = $api->prepare_item_for_response($order, $request);
+                $response = $api->prepare_object_for_response($order, $request);
                 $order = $response->get_data();
                 $count = count($order['line_items']);
                 $order['product_count'] = $count;
@@ -472,7 +472,7 @@ class VendorAdminDokanHelper
         $week_4_orders = dokan()->order->all($this->add_date_filter($args, 'week_4'));
         $week_5_orders = dokan()->order->all($this->add_date_filter($args, 'month'));
         $all_orders = dokan()->order->all($args);
-      
+
         $sales_stats['gross_sales']['last_month'] = $this->get_gross_sales_orders($last_month_orders);
         $sales_stats['gross_sales']['month'] = $this->get_gross_sales_orders($month_orders);
         $sales_stats['gross_sales']['year'] = $this->get_gross_sales_orders($year_orders);

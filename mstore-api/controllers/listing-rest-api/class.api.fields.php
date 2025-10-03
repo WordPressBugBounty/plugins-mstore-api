@@ -352,6 +352,14 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             'schema' => null,
         ));
 
+        register_rest_field($this->_customPostType, 'pure_taxonomies', array(
+            'get_callback' => array(
+                $this,
+                'get_pure_taxonomies'
+            ) ,
+            'schema' => null,
+        ));
+
         register_rest_field($this->_customPostType, 'featured_image', array(
             'get_callback' => array(
                 $this,
@@ -2082,7 +2090,6 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 $data['distance'] = $post->distance;
             }
 
-            $data['pure_taxonomies'] = $this->get_pure_taxonomies();
             $data['listing_data'] = $this->get_post_meta_for_api($data);
             if (!empty($schema['properties']['slug']))
             {
@@ -2328,41 +2335,47 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             return apply_filters("rest_prepare_job_listing", $response, $post, $request);
         }
 
-        public function get_pure_taxonomies()
+        public function get_pure_taxonomies($object)
         {
-            $return = array();
-            // Get categories
-            $post_categories = wp_get_post_categories($object['id']);
-            foreach ($post_categories as $category)
-            {
-                $return['categories'][] = get_category($category);
+            if (empty($object['id'])) {
+                return [];
             }
-            // Get tags
-            $post_tags = wp_get_post_tags($object['id']);
-            if (!empty($post_tags))
-            {
-                $return['tags'] = $post_tags;
+
+            $post_id = $object['id'];
+
+            if ($this->_isListeo) {
+                $taxonomies = ['listing_category', 'region', 'listing_feature'];
+            } elseif ($this->_isListingPro) {
+                $taxonomies = ['listing-category', 'location', 'list-tags'];
+            } elseif ($this->_isMyListing) {
+                $taxonomies = ['job_listing_category', 'region', 'case27_job_listing_tags'];
+            } else {
+                $taxonomies = ['listing_category', 'region', 'listing_feature'];
             }
-            // Get taxonomies
-            $args = array(
-                'public' => true,
-                '_builtin' => false
-            );
-            $output = 'names'; // or objects
-            $operator = 'and'; // 'and' or 'or'
-            $taxonomies = get_taxonomies($args, $output, $operator);
-            foreach ($taxonomies as $key => $taxonomy_name)
-            {
-                $post_taxonomies = get_the_terms($object['id'], $taxonomy_name);
-                if (is_array($post_taxonomies))
-                {
-                    foreach ($post_taxonomies as $key2 => $post_taxonomy)
-                    {
-                        $return[$taxonomy_name][] = get_term($post_taxonomy, $taxonomy_name);
-                    }
-                }
+
+            $result = [];
+
+            foreach ($taxonomies as $taxonomy) {
+                $terms = get_the_terms($post_id, $taxonomy);
+                $result[$taxonomy] = is_array($terms)
+                    ? array_map(function ($term) {
+                        return [
+                            'term_id'            => $term->term_id,
+                            'name'               => $term->name,
+                            'slug'               => $term->slug,
+                            'term_group'         => $term->term_group,
+                            'term_taxonomy_id'   => $term->term_taxonomy_id,
+                            'taxonomy'           => $term->taxonomy,
+                            'description'        => $term->description,
+                            'parent'             => $term->parent,
+                            'count'              => $term->count,
+                            'filter'             => 'raw',
+                        ];
+                    }, $terms)
+                    : [];
             }
-            return $return;
+
+            return $result;
         }
 
         /**
