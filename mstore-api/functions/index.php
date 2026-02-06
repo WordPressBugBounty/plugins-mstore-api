@@ -316,33 +316,6 @@ function trackNewOrder($order_id)
     }
 }
 
-function getAddOns($categories)
-{
-    $addOns = [];
-    if (is_plugin_active('woocommerce-product-addons/woocommerce-product-addons.php')) {
-        $addOnGroup = WC_Product_Addons_Groups::get_all_global_groups();
-        foreach ($addOnGroup as $addOn) {
-            $cateIds = array_keys($addOn["restrict_to_categories"]);
-            if (count($cateIds) == 0) {
-                $addOns = array_merge($addOns, $addOn["fields"]);
-                break;
-            }
-            $isSupported = false;
-            foreach ($categories as $cate) {
-                if (in_array($cate["id"], $cateIds)) {
-                    $isSupported = true;
-                    break;
-                }
-            }
-            if ($isSupported) {
-                $addOns = array_merge($addOns, $addOn["fields"]);
-            }
-        }
-    }
-
-    return $addOns;
-}
-
 function deactiveMStoreApi()
 {
     $website = get_home_url();
@@ -546,15 +519,27 @@ function customProductResponse($response, $object, $request)
             $response->data['max_price'] = strval($response->data['max_price']);
 
             if($is_detail_api){
-				$variations = $response->data['variations'];
-				$controller = new WC_REST_Product_Variations_V2_Controller();
-				$variation_arr = array();
-                foreach($variations as $variation_id){
-					$variation = new WC_Product_Variation($variation_id);
-                    $variation_data = $controller->prepare_object_for_response($variation, $request)->get_data();
-					$variation_arr[] = $variation_data;
-				}
-                $response->data['variation_products'] = $variation_arr;
+                $variations = $response->data['variations'];
+                $is_scalar_list = true;
+                foreach ($variations as $variation) {
+                    if (!is_string($variation) && !is_int($variation) && !is_float($variation)) {
+                        $is_scalar_list = false;
+                        break;
+                    }
+                }
+
+                if ($is_scalar_list) {
+                    $controller = new WC_REST_Product_Variations_V2_Controller();
+                    $variation_arr = array();
+                    foreach ($variations as $variation_id) {
+                        $variation = new WC_Product_Variation($variation_id);
+                        $variation_data = $controller->prepare_object_for_response($variation, $request)->get_data();
+                        $variation_arr[] = $variation_data;
+                    }
+                    $response->data['variation_products'] = $variation_arr;
+                } else {
+                    $response->data['variation_products'] = $variations;
+                }
             }
 
         }
@@ -616,6 +601,25 @@ function customProductResponse($response, $object, $request)
     }
 
 
+    // Append rental date requirement metadata for WCRP rentals.
+    if ( $product instanceof WC_Product) {
+        $product_id          = $product->get_id();
+        $is_rental_only      = function_exists( 'wcrp_rental_products_is_rental_only' ) ? wcrp_rental_products_is_rental_only( $product_id ) : false;
+        $is_rental_bundle    = function_exists( 'wcrp_rental_products_is_rental_bundle' ) ? wcrp_rental_products_is_rental_bundle( $product_id ) : false;
+        $requires_select_date = $is_rental_only || $is_rental_bundle;
+
+        if ( $requires_select_date ) {
+            $meta_data = $response->data['meta_data'];
+            $meta_data[] = new WC_Meta_Data(
+                array(
+                    'key'   =>'_wcrp_is_select_date',
+                    'value' => true,
+                )
+            );
+            $response->data['meta_data'] = $meta_data;
+        }
+    }
+    
     // /* Product Add On */
     if(class_exists('WC_Product_Addons_Helper')){
         if(class_exists('WeDevs_Dokan') && dokan()->is_pro_exists()){
@@ -1220,6 +1224,17 @@ function customOrderResponse($response, $object, $request)
     if(function_exists( 'wcfm_is_order_delivered' ) ) {
         $is_order_delivered = wcfm_is_order_delivered( $response->data['id'] );
         $response->data['delivery_status'] = $is_order_delivered ? 'delivered' : 'pending';
+    }
+    
+    // Remove duplicate "stores" field added by multi-vendor plugins
+    if (isset($response->data['stores'])) {
+        unset($response->data['stores']);
+    }
+    
+    // Update "store" field with full information from first product's store data
+    if (!empty($response->data['line_items']) && 
+        isset($response->data['line_items'][0]['product_data']['store'])) {
+        $response->data['store'] = $response->data['line_items'][0]['product_data']['store'];
     }
 
     return $response;

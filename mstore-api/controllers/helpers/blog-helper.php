@@ -20,7 +20,7 @@ class FlutterBlogHelper
         }
         return new WP_Error("invalid_url", "Not Found", array('status' => 404));
     }
-    
+
     public function create_blog($request){
 		$title = sanitize_text_field($request['title']);
 		$content = sanitize_text_field($request['content']);
@@ -49,31 +49,38 @@ class FlutterBlogHelper
             return new WP_Error("unauthorized", "You are not allowed to create this post", array('status' => 401));
         }
 
+        // Validate and set post status
+        $allowed_statuses = array('publish', 'draft', 'pending', 'private', 'future');
         if ($status == 'publish' || $status == 'published') {
             if ( !current_user_can( 'publish_posts' ) ) {
                 return new WP_Error("unauthorized", "You are not allowed to publish this post", array('status' => 401));
             }
-        } else {
-            $status = "draft";
+            $status = 'publish';
+        } elseif (!in_array($status, $allowed_statuses)) {
+            // If status is not in allowed list, default to draft
+            $status = 'draft';
         }
-        
+
         $my_post = array(
             'post_author' => $user_id,
             'post_title'   => $title,
             'post_content' => $content,
             'post_status' => $status,
-			'post_category' => [$categories],
         );
-		
+
         $post_id = wp_insert_post( $my_post );
-		
+
+		if (!is_wp_error($post_id) && !empty($categories)) {
+            wp_set_post_categories($post_id, array(intval($categories)), false);
+        }
+
 		if(isset($image)){
             $img_id = upload_image_from_mobile($image, 0 ,$user_id);
             if($img_id != false){
                 set_post_thumbnail($post_id, $img_id);
             }
 		}
-		
+
         return new WP_REST_Response(
             [
                 "status" => "success",
@@ -87,7 +94,7 @@ class FlutterBlogHelper
 		$content = sanitize_text_field($request['content']);
 		$token = sanitize_text_field($request['token']);
 		$post_id = sanitize_text_field($request['post_id']);
-		
+
         if (!empty($token)) {
             $cookie = urldecode(base64_decode($token));
         } else {
@@ -97,7 +104,7 @@ class FlutterBlogHelper
         if (is_wp_error($user_id)) {
             return $user_id;
         }
-		
+
 		$is_approved = get_option( 'comment_moderation' ) ;
 	    if ( comments_open( $post_id ) ) {
 			$current_user = get_user_by('ID',$user_id);
@@ -110,7 +117,7 @@ class FlutterBlogHelper
                 'comment_author_url'   => $current_user->user_url,
                 'comment_approved'	   => empty($is_approved) ? 1 : 0,
             );
-    
+
             $comment_id = wp_insert_comment( $data );
             if ( ! is_wp_error( $comment_id ) ) {
                 return true;
@@ -120,6 +127,59 @@ class FlutterBlogHelper
         }else{
             return new WP_Error("comments_open", "This post doesn't allow to  comment", array('status' => 400));
         }
+	}
+
+	public function get_user_posts($request){
+		$author = sanitize_text_field($request['author']);
+		$token = sanitize_text_field($request['token']);
+
+        if (empty($token)) {
+            return new WP_Error("unauthorized", "You are not allowed to do this", array('status' => 401));
+        }
+
+        $cookie = urldecode(base64_decode($token));
+        $user_id = validateCookieLogin($cookie);
+        if (is_wp_error($user_id)) {
+            return $user_id;
+        }
+
+		// Verify user is requesting their own posts
+        if ((int)$user_id !== (int)$author) {
+            return new WP_Error("unauthorized", "You are not allowed to do this", array('status' => 401));
+		}
+
+        // Get posts with all statuses for authenticated user
+        // Pagination parameters
+        $page = isset($request['page']) ? max(1, intval($request['page'])) : 1;
+        $per_page = isset($request['per_page']) ? intval($request['per_page']) : 20;
+        $per_page = max(1, min($per_page, 50)); // Limit per_page between 1 and 50
+        $args = array(
+            'author' => $author,
+            'post_status' => array('publish', 'draft', 'pending', 'private', 'future'),
+            'posts_per_page' => $per_page,
+            'paged' => $page,
+            'orderby' => 'date',
+            'order' => 'DESC'
+        );
+
+        $posts = get_posts($args);
+
+        if (empty($posts)) {
+            return array();
+        }
+
+        $controller = new WP_REST_Posts_Controller('post');
+        $data = array();
+
+        foreach ($posts as $post) {
+            $req = new WP_REST_Request('GET');
+            $params = array('id' => $post->ID);
+            $req->set_query_params($params);
+            $response = $controller->prepare_item_for_response($post, $req);
+            $data[] = $controller->prepare_response_for_collection($response);
+        }
+
+        return $data;
 	}
 }
 ?>

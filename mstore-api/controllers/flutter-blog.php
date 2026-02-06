@@ -55,6 +55,16 @@ class FlutterBlog extends FlutterBaseController
                 }
 			),
 		));
+
+		register_rest_route( $this->namespace,  '/user-posts', array(
+			array(
+				'methods' => "GET",
+				'callback' => array( $this, 'get_user_posts' ),
+				'permission_callback' => function () {
+                    return parent::checkApiPermission();
+                }
+			),
+		));
     }
 
     function get_blog_from_dynamic_link($request)
@@ -62,7 +72,7 @@ class FlutterBlog extends FlutterBaseController
         $helper = new FlutterBlogHelper();
         return $helper->get_blog_from_dynamic_link($request);
     }
-    
+
     function create_blog($request){
 		$helper = new FlutterBlogHelper();
         return $helper->create_blog($request);
@@ -71,6 +81,11 @@ class FlutterBlog extends FlutterBaseController
     function create_comment($request){
 		$helper = new FlutterBlogHelper();
         return $helper->create_comment($request);
+	}
+
+	function get_user_posts($request){
+		$helper = new FlutterBlogHelper();
+        return $helper->get_user_posts($request);
 	}
 }
 

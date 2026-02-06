@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.18.2
+ * Version: 4.18.3
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  *
@@ -17,6 +17,7 @@ defined('ABSPATH') or wp_die('No script kiddies please!');
 
 include plugin_dir_path(__FILE__) . "templates/class-mobile-detect.php";
 include plugin_dir_path(__FILE__) . "templates/class-rename-generate.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-app.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-user.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-home.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-booking.php";
@@ -57,6 +58,10 @@ include_once plugin_dir_path(__FILE__) . "controllers/flutter-smart-cod.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-discount-rules.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-checkout.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-razorpay.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-fibo-search.php";
+include_once plugin_dir_path(__FILE__) . "controllers/helpers/fibosearch-woo-rest-integration.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-paypal.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-rental.php";
 
 if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
     require __DIR__ . '/vendor/autoload.php';
@@ -64,13 +69,13 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.18.2';
+    public $version = '4.18.3';
 
     public function __construct()
     {
         define('MSTORE_CHECKOUT_VERSION', $this->version);
         define('MSTORE_PLUGIN_FILE', __FILE__);
-        
+
         /**
          * Prepare data before checkout by webview
          */
@@ -173,7 +178,7 @@ class MstoreCheckOut
 					}
 				}
 				$new_price = $cart_item['data']->get_price() + $add_price;
-				$cart_item['data']->set_price($new_price);   
+				$cart_item['data']->set_price($new_price);
 			}
 		}
         */
@@ -248,7 +253,7 @@ class MstoreCheckOut
         }
         return $allowed_endpoints;
     }
-    
+
     public function filter_avatar($url, $id_or_email, $args)
     {
         $finder = false;
@@ -476,6 +481,8 @@ function flutter_users_routes()
 }
 
 add_action('rest_api_init', 'flutter_users_routes');
+
+/// FluxBuilder Troubleshooting only 🤔
 add_action('rest_api_init', 'mstore_check_payment_routes');
 function mstore_check_payment_routes()
 {
@@ -513,6 +520,8 @@ add_filter('woocommerce_rest_prepare_product_object', 'flutter_custom_change_pro
 add_filter('woocommerce_rest_prepare_product_review', 'custom_product_review', 20, 3);
 add_filter('woocommerce_rest_prepare_product_cat', 'custom_product_category', 20, 3);
 add_filter('woocommerce_rest_prepare_shop_order_object', 'flutter_custom_change_order_response', 20, 3);
+// Add image support for WordPress blog categories
+add_filter('rest_prepare_category', 'flutter_add_image_to_category', 20, 3);
 add_filter('woocommerce_rest_prepare_product_attribute', 'flutter_custom_change_product_attribute', 20, 3);
 add_filter('woocommerce_rest_prepare_product_tag', 'flutter_custom_change_product_taxonomy', 20, 3);
 add_filter('woocommerce_rest_prepare_product_brand', 'flutter_custom_change_product_taxonomy', 20, 3);
@@ -525,7 +534,7 @@ add_filter('found_posts', 'flutter_custom_found_posts', 20, 2);
 
 /**
  * WooCommerce REST API: Random sorting for products.
- * 
+ *
  * rest_{post_type}_collection_params
  *
  * @param array $params
@@ -610,6 +619,150 @@ function custom_product_category($response, $object, $request)
     return $response;
 }
 
+/**
+ * Add image field to WordPress blog category REST API response
+ */
+function flutter_add_image_to_category($response, $category, $request)
+{
+    $image_id = get_term_meta($category->term_id, 'category_image_id', true);
+    $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'full') : '';
+    $response->data['image'] = $image_url;
+
+    return $response;
+}
+
+/**
+ * Add image field to category form (Add new category)
+ */
+add_action('category_add_form_fields', 'flutter_add_category_image_field', 10, 2);
+function flutter_add_category_image_field($taxonomy)
+{
+    ?>
+    <div class="form-field term-group">
+        <label for="category-image-id"><?php esc_html_e('Image', 'mstore-api'); ?></label>
+        <input type="hidden" id="category-image-id" name="category-image-id" value="">
+        <div id="category-image-wrapper"></div>
+        <p>
+            <button type="button" class="button button-secondary flutter_category_media_button">
+                <?php esc_html_e('Add Image', 'mstore-api'); ?>
+            </button>
+            <button type="button" class="button button-secondary flutter_category_media_remove">
+                <?php esc_html_e('Remove Image', 'mstore-api'); ?>
+            </button>
+        </p>
+    </div>
+    <?php
+}
+
+/**
+ * Add image field to category form (Edit category)
+ */
+add_action('category_edit_form_fields', 'flutter_edit_category_image_field', 10, 2);
+function flutter_edit_category_image_field($term, $taxonomy)
+{
+    $image_id = get_term_meta($term->term_id, 'category_image_id', true);
+    ?>
+    <tr class="form-field term-group-wrap">
+        <th scope="row">
+            <label for="category-image-id"><?php esc_html_e('Image', 'mstore-api'); ?></label>
+        </th>
+        <td>
+            <input type="hidden" id="category-image-id" name="category-image-id" value="<?php echo esc_attr($image_id); ?>">
+            <div id="category-image-wrapper">
+                <?php
+                if ($image_id) {
+                    echo wp_get_attachment_image($image_id, 'thumbnail');
+                }
+                ?>
+            </div>
+            <p>
+                <button type="button" class="button button-secondary flutter_category_media_button">
+                    <?php esc_html_e('Add Image', 'mstore-api'); ?>
+                </button>
+                <button type="button" class="button button-secondary flutter_category_media_remove">
+                    <?php esc_html_e('Remove Image', 'mstore-api'); ?>
+                </button>
+            </p>
+        </td>
+    </tr>
+    <?php
+}
+
+/**
+ * Save category image
+ */
+add_action('created_category', 'flutter_save_category_image', 10, 2);
+add_action('edited_category', 'flutter_save_category_image', 10, 2);
+function flutter_save_category_image($term_id, $tt_id)
+{
+    if (!isset($_POST['category-image-id'])) {
+        return;
+    }
+
+    $image_id = absint($_POST['category-image-id']);
+    update_term_meta($term_id, 'category_image_id', $image_id);
+}
+
+/**
+ * Enqueue media uploader scripts for category image
+ */
+add_action('admin_enqueue_scripts', 'flutter_category_image_admin_scripts');
+function flutter_category_image_admin_scripts($hook)
+{
+    if (!in_array($hook, ['edit-tags.php', 'term.php'], true)) {
+        return;
+    }
+
+    wp_enqueue_media();
+    wp_enqueue_script(
+        'flutter-category-image',
+        plugin_dir_url(__FILE__) . 'assets/js/mstore-inspireui.js',
+        array('jquery'),
+        '1.0.0',
+        true
+    );
+}
+
+/**
+ * Add image column to category list table
+ */
+add_filter('manage_edit-category_columns', 'flutter_add_category_image_column');
+function flutter_add_category_image_column($columns)
+{
+    $new_columns = array();
+    foreach ($columns as $key => $value) {
+        if ($key === 'description') {
+            $new_columns['image'] = __('Image', 'mstore-api');
+        }
+        $new_columns[$key] = $value;
+    }
+    return $new_columns;
+}
+
+/**
+ * Display image in category list table column
+ */
+add_filter('manage_category_custom_column', 'flutter_display_category_image_column', 10, 3);
+function flutter_display_category_image_column($content, $column_name, $term_id)
+{
+    if ($column_name !== 'image') {
+        return $content;
+    }
+
+    $image_id = get_term_meta($term_id, 'category_image_id', true);
+
+    if (!$image_id) {
+        return '—';
+    }
+
+    return wp_get_attachment_image(
+        $image_id,
+        'thumbnail',
+        false,
+        array('style' => 'width:50px;height:50px;object-fit:cover;')
+    );
+}
+
 function custom_product_review($response, $object, $request)
 {
     if(is_plugin_active('woo-photo-reviews/woo-photo-reviews.php') || is_plugin_active('woocommerce-photo-reviews/woocommerce-photo-reviews.php')){
@@ -625,7 +778,7 @@ function custom_product_review($response, $object, $request)
     }
     return $response;
 }
- 
+
 function flutter_custom_change_order_response($response, $object, $request)
 {
     return customOrderResponse($response, $object, $request);
@@ -729,7 +882,7 @@ function custom_woocommerce_rest_prepare_product_variation_object($response, $ob
     $response->data['price'] = wc_get_price_to_display(  $object );
     $response->data['regular_price'] = wc_get_price_to_display(  $object, array( 'price' => $object->get_regular_price() ) );
     $response->data['sale_price'] = wc_get_price_to_display(  $object, array( 'price' => $object->get_sale_price() ) );
-    
+
     $is_purchased = false;
     if (isset($request['user_id'])) {
         $user_id = $request['user_id'];
@@ -815,7 +968,7 @@ function custom_woocommerce_rest_prepare_product_variation_object($response, $ob
  *
  * Attaches to 'the_posts' filter hook, checks to see if there's a place for a
  * search and runs relevanssi_do_query() if there is.
- * 
+ *
  * https://www.relevanssi.com/user-manual/using-relevanssi-outside-search-pages/
  *
  * @param array    $posts An array of post objects.
@@ -863,7 +1016,7 @@ function flutter_prepare_checkout()
             }
         }
 	}
-    
+
     if (isset($_GET['mobile']) && isset($_GET['code'])) {
 
         $code = sanitize_text_field($_GET['code']);
@@ -932,7 +1085,7 @@ function flutter_prepare_checkout()
                 } else {
                     $billing = [];
                     $shipping = [];
-    
+
                     $billing["first_name"] = get_user_meta($userId, 'billing_first_name', true);
                     $billing["last_name"] = get_user_meta($userId, 'billing_last_name', true);
                     $billing["company"] = get_user_meta($userId, 'billing_company', true);
@@ -944,7 +1097,7 @@ function flutter_prepare_checkout()
                     $billing["country"] = get_user_meta($userId, 'billing_country', true);
                     $billing["email"] = get_user_meta($userId, 'billing_email', true);
                     $billing["phone"] = get_user_meta($userId, 'billing_phone', true);
-    
+
                     $shipping["first_name"] = get_user_meta($userId, 'shipping_first_name', true);
                     $shipping["last_name"] = get_user_meta($userId, 'shipping_last_name', true);
                     $shipping["company"] = get_user_meta($userId, 'shipping_company', true);
@@ -956,7 +1109,7 @@ function flutter_prepare_checkout()
                     $shipping["country"] = get_user_meta($userId, 'shipping_country', true);
                     $shipping["email"] = get_user_meta($userId, 'shipping_email', true);
                     $shipping["phone"] = get_user_meta($userId, 'shipping_phone', true);
-    
+
                     if (isset($billing["first_name"]) && !isset($shipping["first_name"])) {
                         $shipping = $billing;
                     }
@@ -964,13 +1117,13 @@ function flutter_prepare_checkout()
                         $billing = $shipping;
                     }
                 }
-    
+
                 // Check user and authentication
                 $user = get_userdata($userId);
                 if ($user && (!is_user_logged_in() || get_current_user_id() !== $userId)) {
                     wp_set_current_user($userId, $user->user_login);
                     wp_set_auth_cookie($userId);
-    
+
                     header("Refresh:0");
                 }
                 cleanupAppointmentCartData($userId);
@@ -989,7 +1142,7 @@ function flutter_prepare_checkout()
             WC()->session->set('refresh_totals', true);
             WC()->cart->empty_cart();
 
-            if(class_exists('WC_Points_Rewards_Discount')){
+            if(class_exists('WC_Points_Rewards_Discount') && !empty($data['fee_lines'])){
                 foreach ($data['fee_lines'] as $fee) {
                    if($fee['name'] == 'Cart Discount'){
                         list($points, $monetary_value) = explode(':', get_option('wc_points_rewards_redeem_points_ratio', ''));
@@ -1004,7 +1157,7 @@ function flutter_prepare_checkout()
                    }
                 }
             }
-            
+
             $products = $data['line_items'];
 
             buildCartItemData($products, function($productId, $quantity, $variationId, $attributes, $cart_item_data){
@@ -1246,7 +1399,7 @@ function get_promptpay_qrcode_routes()
  $promptpay_name = $paymentMethod->promptpay_name;
  $include_price = $paymentMethod->include_price;
                 $image_url = get_site_url() . "/wp-content/plugins/thai-promptpay-payment-easy-gateway-plugin/images/promptpay_qrcode/promptpay-qr-l.php?type=$promptpay_type&promptpay_id=$promptpay_id";
- 
+
  if($include_price=='yes'){
  $price = $order->get_total();
  $image_url .= "&price=$price&p=1";
@@ -1269,31 +1422,31 @@ if (!function_exists('add_variation_swatches_attribute_images_to_api')) {
         if (!function_exists('woo_variation_swatches') || !class_exists('Woo_Variation_Swatches')) {
             return $response;
         }
-        
+
         $data = $response->get_data();
-        
+
         // Only proceed if product has attributes
         if (empty($data['attributes'])) {
             return $response;
         }
-        
+
         $product_attributes = $product->get_attributes();
-        
+
         foreach ($data['attributes'] as $key => $attribute) {
             $attribute_name = $attribute['name'];
             $attribute_obj = isset($product_attributes[$attribute_name]) ? $product_attributes[$attribute_name] : null;
-            
+
             if ($attribute_obj && $attribute_obj->is_taxonomy()) {
                 $terms = wp_get_post_terms($product->get_id(), $attribute_name, ['fields' => 'all']);
-                
+
                 foreach ($terms as $term_key => $term) {
                     // Get image ID from term meta set by Woo Variation Swatches
                     $image_id = get_term_meta($term->term_id, 'product_attribute_image', true);
-                    
+
                     if ($image_id) {
                         $image_size = woo_variation_swatches()->get_option('attribute_image_size', 'variation_swatches_image_size');
                         $image_src = wp_get_attachment_image_src($image_id, $image_size);
-                        
+
                         if ($image_src) {
                             // Add image data to the term in the API response
                             $data['attributes'][$key]['options'][$term_key] = [
@@ -1311,7 +1464,7 @@ if (!function_exists('add_variation_swatches_attribute_images_to_api')) {
                 }
             }
         }
-        
+
         $response->set_data($data);
         return $response;
     }

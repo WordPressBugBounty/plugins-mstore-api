@@ -248,6 +248,39 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 }
             ));
 
+            register_rest_route('wp/v2', '/get-ticket/(?P<booking_id>\d+)', array(
+                'methods' => 'GET',
+                'callback' => array(
+                    $this,
+                    'get_ticket'
+                ) ,
+                'permission_callback' => function () {
+                    return true;
+                }
+            ));
+
+            register_rest_route('wp/v2', '/cancel-booking', array(
+                'methods' => 'POST',
+                'callback' => array(
+                    $this,
+                    'cancel_booking'
+                ) ,
+                'permission_callback' => function () {
+                    return true;
+                }
+            ));
+
+            register_rest_route('wp/v2', '/delete-booking', array(
+                'methods' => 'POST',
+                'callback' => array(
+                    $this,
+                    'delete_booking'
+                ) ,
+                'permission_callback' => function () {
+                    return true;
+                }
+            ));
+
             register_rest_route('wp/v2', '/payment', array(
                 'methods' => 'GET',
                 'callback' => array(
@@ -429,6 +462,39 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             'callback' => array(
                 $this,
                 'get_nearby_listings'
+            ),
+            'permission_callback' => function () {
+                return true;
+            }
+        ));
+
+        register_rest_route('wp/v2', '/get-countries-with-listings', array(
+            'methods' => 'GET',
+            'callback' => array(
+                $this,
+                'get_countries_with_listings'
+            ),
+            'permission_callback' => function () {
+                return true;
+            }
+        ));
+
+        register_rest_route('wp/v2', '/get-provinces-with-listings', array(
+            'methods' => 'GET',
+            'callback' => array(
+                $this,
+                'get_provinces_with_listings'
+            ),
+            'permission_callback' => function () {
+                return true;
+            }
+        ));
+
+        register_rest_route('wp/v2', '/get-listings-by-province', array(
+            'methods' => 'GET',
+            'callback' => array(
+                $this,
+                'get_listings_by_province'
             ),
             'permission_callback' => function () {
                 return true;
@@ -749,6 +815,443 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         }
         return $data;
     }
+
+    /**
+    * Reverse geocode latitude and longitude to get country and province using Nominatim (OpenStreetMap).
+     *
+     * @param float $lat Latitude coordinate.
+     * @param float $lng Longitude coordinate.
+     * @return array{country: ?string, country_code: ?string, province: ?string} Associative array with country, country_code, and province (all may be null or string).
+     *
+     * Note: This function enforces a 1-second delay per request to comply with Nominatim's usage policy (max 1 request per second).
+     */
+    private function reverse_geocode($lat, $lng) {
+        // Validate that lat and lng are numeric
+        if (!is_numeric($lat) || !is_numeric($lng)) {
+            return ['country' => null, 'country_code' => null, 'province' => null];
+        }
+        // Nominatim API endpoint
+        $url = "https://nominatim.openstreetmap.org/reverse?format=json&lat={$lat}&lon={$lng}&addressdetails=1";
+
+        // Important: Nominatim requires User-Agent header
+        $response = wp_remote_get($url, array(
+            'timeout' => 15,
+            'headers' => array(
+                'User-Agent' => 'FluxStore/1.0 (https://inspireui.com)'
+            )
+        ));
+
+        if (is_wp_error($response)) {
+            return ['country' => null, 'country_code' => null, 'province' => null];
+        }
+
+        $response_code = wp_remote_retrieve_response_code($response);
+        $body_raw = wp_remote_retrieve_body($response);
+        $body = json_decode($body_raw, true);
+
+        if ($response_code != 200) {
+            return ['country' => null, 'country_code' => null, 'province' => null];
+        }
+
+        if (empty($body) || !isset($body['address'])) {
+            return ['country' => null, 'country_code' => null, 'province' => null];
+        }
+
+        $address = $body['address'];
+        $country = null;
+        $country_code = null;
+        $province = null;
+
+        // Extract country
+        if (isset($address['country'])) {
+            $country = $address['country'];
+        }
+        if (isset($address['country_code'])) {
+            $country_code = strtoupper($address['country_code']);
+        }
+
+        if (isset($address['state'])) {
+            $province = $address['state'];
+        } elseif (isset($address['province'])) {
+            $province = $address['province'];
+        } elseif (isset($address['region'])) {
+            $province = $address['region'];
+        } elseif (isset($address['county'])) {
+            $province = $address['county'];
+        }
+
+        // Respect Nominatim usage policy: max 1 request per second
+        sleep(1);
+
+        $result = [
+            'country' => $country,
+            'country_code' => $country_code,
+            'province' => $province
+        ];
+
+        return $result;
+    }
+    /**
+     * Get or update cached country/province for a listing
+     */
+    private function get_listing_location($listing_id, $lat, $lng) {
+        // Check if already cached - MUST have both country AND province
+        $cached_country = get_post_meta($listing_id, '_listing_country', true);
+        $cached_country_code = get_post_meta($listing_id, '_listing_country_code', true);
+        $cached_province = get_post_meta($listing_id, '_listing_province', true);
+
+        // Only return cached if we have BOTH country and province
+        if (!empty($cached_country_code) && !empty($cached_province)) {
+            return [
+                'country' => $cached_country,
+                'country_code' => $cached_country_code,
+                'province' => $cached_province
+            ];
+        }
+
+        // If we have country but not province, or nothing at all - geocode
+        $location = $this->reverse_geocode($lat, $lng);
+
+        update_post_meta($listing_id, '_listing_country', $location['country']);
+        update_post_meta($listing_id, '_listing_country_code', $location['country_code']);
+        update_post_meta($listing_id, '_listing_province', $location['province']);
+
+        return $location;
+    }
+
+    private function get_countries_aggregated() {
+        global $wpdb;
+
+        if ($this->_isListeo) {
+            $sql = "SELECT
+                        pm_country_code.meta_value as country_code,
+                        pm_country.meta_value as country_name,
+                        COUNT(DISTINCT p.ID) as listings_count,
+                        MIN(CAST(pm_lat.meta_value AS DECIMAL(10,8))) as min_lat,
+                        MAX(CAST(pm_lat.meta_value AS DECIMAL(10,8))) as max_lat,
+                        MIN(CAST(pm_lng.meta_value AS DECIMAL(11,8))) as min_lng,
+                        MAX(CAST(pm_lng.meta_value AS DECIMAL(11,8))) as max_lng
+                    FROM {$wpdb->prefix}posts p
+                    INNER JOIN {$wpdb->prefix}postmeta pm_lat ON p.ID = pm_lat.post_id AND pm_lat.meta_key = '_geolocation_lat'
+                    INNER JOIN {$wpdb->prefix}postmeta pm_lng ON p.ID = pm_lng.post_id AND pm_lng.meta_key = '_geolocation_long'
+                    INNER JOIN {$wpdb->prefix}postmeta pm_country_code ON p.ID = pm_country_code.post_id AND pm_country_code.meta_key = '_listing_country_code'
+                    LEFT JOIN {$wpdb->prefix}postmeta pm_country ON p.ID = pm_country.post_id AND pm_country.meta_key = '_listing_country'
+                    WHERE p.post_type = 'listing' AND p.post_status = 'publish'
+                    AND pm_lat.meta_value != '' AND pm_lng.meta_value != ''
+                    AND pm_country_code.meta_value != '' AND pm_country_code.meta_value IS NOT NULL
+                    GROUP BY pm_country_code.meta_value, pm_country.meta_value
+                    ORDER BY listings_count DESC";
+
+            return $wpdb->get_results($sql);
+
+        } elseif ($this->_isMyListing) {
+            $sql = "SELECT
+                        pm_country_code.meta_value as country_code,
+                        pm_country.meta_value as country_name,
+                        COUNT(DISTINCT p.ID) as listings_count,
+                        MIN(CAST(pm_lat.meta_value AS DECIMAL(10,8))) as min_lat,
+                        MAX(CAST(pm_lat.meta_value AS DECIMAL(10,8))) as max_lat,
+                        MIN(CAST(pm_lng.meta_value AS DECIMAL(11,8))) as min_lng,
+                        MAX(CAST(pm_lng.meta_value AS DECIMAL(11,8))) as max_lng
+                    FROM {$wpdb->prefix}posts p
+                    INNER JOIN {$wpdb->prefix}postmeta pm_lat ON p.ID = pm_lat.post_id AND pm_lat.meta_key = 'geolocation_lat'
+                    INNER JOIN {$wpdb->prefix}postmeta pm_lng ON p.ID = pm_lng.post_id AND pm_lng.meta_key = 'geolocation_long'
+                    INNER JOIN {$wpdb->prefix}postmeta pm_country_code ON p.ID = pm_country_code.post_id AND pm_country_code.meta_key = '_listing_country_code'
+                    LEFT JOIN {$wpdb->prefix}postmeta pm_country ON p.ID = pm_country.post_id AND pm_country.meta_key = '_listing_country'
+                    WHERE p.post_type = 'job_listing' AND p.post_status = 'publish'
+                    AND pm_lat.meta_value != '' AND pm_lng.meta_value != ''
+                    AND pm_country_code.meta_value != '' AND pm_country_code.meta_value IS NOT NULL
+                    GROUP BY pm_country_code.meta_value, pm_country.meta_value
+                    ORDER BY listings_count DESC";
+
+            return $wpdb->get_results($sql);
+
+        } elseif ($this->_isListingPro) {
+            $sql = "SELECT p.ID,
+                           pm_opts.meta_value as opts,
+                           pm_country_code.meta_value as country_code,
+                           pm_country.meta_value as country_name
+                    FROM {$wpdb->prefix}posts p
+                    INNER JOIN {$wpdb->prefix}postmeta pm_opts ON p.ID = pm_opts.post_id AND pm_opts.meta_key = 'lp_listingpro_options'
+                    INNER JOIN {$wpdb->prefix}postmeta pm_country_code ON p.ID = pm_country_code.post_id AND pm_country_code.meta_key = '_listing_country_code'
+                    LEFT JOIN {$wpdb->prefix}postmeta pm_country ON p.ID = pm_country.post_id AND pm_country.meta_key = '_listing_country'
+                    WHERE p.post_type = 'listing' AND p.post_status = 'publish'
+                    AND pm_opts.meta_value != ''
+                    AND pm_country_code.meta_value != '' AND pm_country_code.meta_value IS NOT NULL";
+
+            $listings = $wpdb->get_results($sql);
+            $aggregated = array();
+
+            foreach ($listings as $listing) {
+                $opts = maybe_unserialize($listing->opts);
+                if (!is_array($opts) || !isset($opts['latitude']) || !isset($opts['longitude'])) continue;
+
+                $code = $listing->country_code;
+                if (!isset($aggregated[$code])) {
+                    $aggregated[$code] = (object) array(
+                        'country_code' => $code,
+                        'country_name' => $listing->country_name ?: $code,
+                        'listings_count' => 0,
+                        'min_lat' => $opts['latitude'],
+                        'max_lat' => $opts['latitude'],
+                        'min_lng' => $opts['longitude'],
+                        'max_lng' => $opts['longitude']
+                    );
+                }
+
+                $agg = &$aggregated[$code];
+                $agg->listings_count++;
+                $agg->min_lat = min($agg->min_lat, $opts['latitude']);
+                $agg->max_lat = max($agg->max_lat, $opts['latitude']);
+                $agg->min_lng = min($agg->min_lng, $opts['longitude']);
+                $agg->max_lng = max($agg->max_lng, $opts['longitude']);
+            }
+
+            return array_values($aggregated);
+        }
+
+        return array();
+    }
+
+    public function get_countries_with_listings($request) {
+        $cache_key = 'countries_listing_summary';
+        $cached = get_transient($cache_key);
+
+        if ($cached !== false) {
+            return $cached;
+        }
+
+        $aggregated_data = $this->get_countries_aggregated();
+
+        $countries = array();
+        foreach ($aggregated_data as $row) {
+            $countries[] = array(
+                'country_code' => $row->country_code,
+                'country_name' => $row->country_name ?: $row->country_code,
+                'listings_count' => intval($row->listings_count),
+                'bounds' => array(
+                    'min_lat' => floatval($row->min_lat),
+                    'max_lat' => floatval($row->max_lat),
+                    'min_lng' => floatval($row->min_lng),
+                    'max_lng' => floatval($row->max_lng)
+                )
+            );
+        }
+
+        $result = array('countries' => $countries);
+
+        set_transient($cache_key, $result, 5 * MINUTE_IN_SECONDS);
+
+        return $result;
+    }
+
+    private function get_provinces_aggregated($country_code) {
+        global $wpdb;
+
+        if ($this->_isListeo) {
+            $sql = "SELECT
+                        pm_province.meta_value as province_name,
+                        COUNT(DISTINCT p.ID) as listings_count,
+                        AVG(CAST(pm_lat.meta_value AS DECIMAL(10,8))) as avg_lat,
+                        AVG(CAST(pm_lng.meta_value AS DECIMAL(11,8))) as avg_lng
+                    FROM {$wpdb->prefix}posts p
+                    INNER JOIN {$wpdb->prefix}postmeta pm_lat ON p.ID = pm_lat.post_id AND pm_lat.meta_key = '_geolocation_lat'
+                    INNER JOIN {$wpdb->prefix}postmeta pm_lng ON p.ID = pm_lng.post_id AND pm_lng.meta_key = '_geolocation_long'
+                    INNER JOIN {$wpdb->prefix}postmeta pm_country ON p.ID = pm_country.post_id AND pm_country.meta_key = '_listing_country_code'
+                    INNER JOIN {$wpdb->prefix}postmeta pm_province ON p.ID = pm_province.post_id AND pm_province.meta_key = '_listing_province'
+                    WHERE p.post_type = 'listing' AND p.post_status = 'publish'
+                    AND pm_country.meta_value = %s
+                    AND pm_lat.meta_value != '' AND pm_lng.meta_value != ''
+                    AND pm_province.meta_value != '' AND pm_province.meta_value IS NOT NULL
+                    GROUP BY pm_province.meta_value
+                    ORDER BY listings_count DESC";
+
+            return $wpdb->get_results($wpdb->prepare($sql, $country_code));
+
+        } elseif ($this->_isMyListing) {
+            $sql = "SELECT
+                        pm_province.meta_value as province_name,
+                        COUNT(DISTINCT p.ID) as listings_count,
+                        AVG(CAST(pm_lat.meta_value AS DECIMAL(10,8))) as avg_lat,
+                        AVG(CAST(pm_lng.meta_value AS DECIMAL(11,8))) as avg_lng
+                    FROM {$wpdb->prefix}posts p
+                    INNER JOIN {$wpdb->prefix}postmeta pm_lat ON p.ID = pm_lat.post_id AND pm_lat.meta_key = 'geolocation_lat'
+                    INNER JOIN {$wpdb->prefix}postmeta pm_lng ON p.ID = pm_lng.post_id AND pm_lng.meta_key = 'geolocation_long'
+                    INNER JOIN {$wpdb->prefix}postmeta pm_country ON p.ID = pm_country.post_id AND pm_country.meta_key = '_listing_country_code'
+                    INNER JOIN {$wpdb->prefix}postmeta pm_province ON p.ID = pm_province.post_id AND pm_province.meta_key = '_listing_province'
+                    WHERE p.post_type = 'job_listing' AND p.post_status = 'publish'
+                    AND pm_country.meta_value = %s
+                    AND pm_lat.meta_value != '' AND pm_lng.meta_value != ''
+                    AND pm_province.meta_value != '' AND pm_province.meta_value IS NOT NULL
+                    GROUP BY pm_province.meta_value
+                    ORDER BY listings_count DESC";
+
+            return $wpdb->get_results($wpdb->prepare($sql, $country_code));
+
+        } elseif ($this->_isListingPro) {
+            $sql = "SELECT p.ID,
+                           pm_opts.meta_value as opts,
+                           pm_province.meta_value as province_name
+                    FROM {$wpdb->prefix}posts p
+                    INNER JOIN {$wpdb->prefix}postmeta pm_opts ON p.ID = pm_opts.post_id AND pm_opts.meta_key = 'lp_listingpro_options'
+                    INNER JOIN {$wpdb->prefix}postmeta pm_country ON p.ID = pm_country.post_id AND pm_country.meta_key = '_listing_country_code'
+                    INNER JOIN {$wpdb->prefix}postmeta pm_province ON p.ID = pm_province.post_id AND pm_province.meta_key = '_listing_province'
+                    WHERE p.post_type = 'listing' AND p.post_status = 'publish'
+                    AND pm_country.meta_value = %s
+                    AND pm_opts.meta_value != ''
+                    AND pm_province.meta_value != '' AND pm_province.meta_value IS NOT NULL";
+
+            $listings = $wpdb->get_results($wpdb->prepare($sql, $country_code));
+            $aggregated = array();
+
+            foreach ($listings as $listing) {
+                $opts = maybe_unserialize($listing->opts);
+                if (!is_array($opts) || !isset($opts['latitude']) || !isset($opts['longitude'])) continue;
+
+                $prov = $listing->province_name;
+                if (!isset($aggregated[$prov])) {
+                    $aggregated[$prov] = (object) array(
+                        'province_name' => $prov,
+                        'listings_count' => 0,
+                        'lat_sum' => 0,
+                        'lng_sum' => 0
+                    );
+                }
+
+                $agg = &$aggregated[$prov];
+                $agg->listings_count++;
+                $agg->lat_sum += floatval($opts['latitude']);
+                $agg->lng_sum += floatval($opts['longitude']);
+            }
+
+            $results = array();
+            foreach ($aggregated as $prov => $data) {
+                $results[] = (object) array(
+                    'province_name' => $data->province_name,
+                    'listings_count' => $data->listings_count,
+                    'avg_lat' => $data->lat_sum / $data->listings_count,
+                    'avg_lng' => $data->lng_sum / $data->listings_count
+                );
+            }
+
+            return $results;
+        }
+
+        return array();
+    }
+
+    public function get_provinces_with_listings($request) {
+        $country_code = $request['country'];
+
+        if (empty($country_code)) {
+            return new WP_Error('missing_country', 'Country parameter is required', array('status' => 400));
+        }
+
+        $cache_key = 'provinces_listing_summary_' . $country_code;
+        $cached = get_transient($cache_key);
+
+        if ($cached !== false) {
+            return $cached;
+        }
+
+        $aggregated_data = $this->get_provinces_aggregated($country_code);
+
+        $provinces = array();
+        foreach ($aggregated_data as $row) {
+            $provinces[] = array(
+                'province_id' => sanitize_title($row->province_name),
+                'province_name' => $row->province_name,
+                'listings_count' => intval($row->listings_count),
+                'lat' => floatval($row->avg_lat),
+                'lng' => floatval($row->avg_lng)
+            );
+        }
+
+        $result = array(
+            'country' => $country_code,
+            'provinces' => $provinces
+        );
+
+        set_transient($cache_key, $result, 5 * MINUTE_IN_SECONDS);
+
+        return $result;
+    }
+
+    public function get_listings_by_province($request) {
+        $province_id = $request['province_id'];
+
+        if (empty($province_id)) {
+            return new WP_Error('missing_province', 'Province ID parameter is required', array('status' => 400));
+        }
+
+        $page = max(1, absint($request->get_param('page') ?: 1));
+        $per_page = absint($request->get_param('per_page') ?: $request->get_param('limit') ?: 10);
+        $offset = ($page - 1) * $per_page;
+
+        global $wpdb;
+        $data = [];
+
+        // Convert province_id to province name for matching
+        $province_name = str_replace('-', ' ', $province_id);
+        $province_name = ucwords($province_name);
+
+        if ($this->_isListeo) {
+            $sql = "SELECT p.*
+                    FROM {$wpdb->prefix}posts p
+                    INNER JOIN {$wpdb->prefix}postmeta pm_province ON p.ID = pm_province.post_id AND pm_province.meta_key = '_listing_province'
+                    WHERE p.post_type = 'listing' AND p.post_status = 'publish'
+                    AND (pm_province.meta_value LIKE %s OR pm_province.meta_value LIKE %s)
+                    LIMIT %d OFFSET %d";
+
+            $search_pattern = '%' . $wpdb->esc_like($province_name) . '%';
+            $sql = $wpdb->prepare($sql, $search_pattern, $search_pattern, $per_page, $offset);
+            $posts = $wpdb->get_results($sql);
+
+            foreach ($posts as $post) {
+                $itemdata = $this->prepare_item_for_response($post, $request);
+                $data[] = $this->prepare_response_for_collection($itemdata);
+            }
+        }
+
+        if ($this->_isMyListing) {
+            $sql = "SELECT p.*
+                    FROM {$wpdb->prefix}posts p
+                    INNER JOIN {$wpdb->prefix}postmeta pm_province ON p.ID = pm_province.post_id AND pm_province.meta_key = '_listing_province'
+                    WHERE p.post_type = 'job_listing' AND p.post_status = 'publish'
+                    AND (pm_province.meta_value LIKE %s OR pm_province.meta_value LIKE %s)
+                    LIMIT %d OFFSET %d";
+
+            $search_pattern = '%' . $wpdb->esc_like($province_name) . '%';
+            $sql = $wpdb->prepare($sql, $search_pattern, $search_pattern, $per_page, $offset);
+            $posts = $wpdb->get_results($sql);
+
+            foreach ($posts as $post) {
+                $itemdata = $this->prepare_item_for_response($post, $request);
+                $data[] = $this->prepare_response_for_collection($itemdata);
+            }
+        }
+
+        if ($this->_isListingPro) {
+            $sql = "SELECT p.*
+                    FROM {$wpdb->prefix}posts p
+                    INNER JOIN {$wpdb->prefix}postmeta pm_province ON p.ID = pm_province.post_id AND pm_province.meta_key = '_listing_province'
+                    WHERE p.post_type = 'listing' AND p.post_status = 'publish'
+                    AND (pm_province.meta_value LIKE %s OR pm_province.meta_value LIKE %s)
+                    LIMIT %d OFFSET %d";
+
+            $search_pattern = '%' . $wpdb->esc_like($province_name) . '%';
+            $sql = $wpdb->prepare($sql, $search_pattern, $search_pattern, $per_page, $offset);
+            $posts = $wpdb->get_results($sql);
+
+            foreach ($posts as $post) {
+                $itemdata = $this->prepare_item_for_response($post, $request);
+                $data[] = $this->prepare_response_for_collection($itemdata);
+            }
+        }
+
+        return $data;
+    }
+
     // Listeo theme functions
     public function get_service_slots($object)
     {
@@ -898,9 +1401,11 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         {
             $data['free_places'] = Listeo_Core_Bookings_Calendar::count_free_places($request['listing_id'], $request['date_start'], $request['date_end'], json_encode($slot));
         }
-        $multiply = 1;
-        if (isset($request['adults'])) $multiply = $request['adults'];
-        if (isset($request['tickets'])) $multiply = $request['tickets'];
+
+        $listing_id = $request['listing_id'];
+        $multiply = (int) ($request['tickets'] ?? $request['adults'] ?? 1);
+        $children_count = isset($request['children']) ? (int)$request['children'] : 0;
+        $animals_count  = isset($request['animals']) ? (int)$request['animals'] : 0;
 
         $coupon = (isset($request['coupon'])) ? $request['coupon'] : false;
         $services = (isset($request['services'])) ? $request['services'] : false;
@@ -912,12 +1417,12 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
         try {
             $args = array(
-                $request['listing_id'],
+                $listing_id,
                 $request['date_start'],
                 $request['date_end'],
                 $multiply,
-                isset($request['children']) ? (int)$request['children'] : 0,
-                isset($request['animals']) ? (int)$request['animals'] : 0,
+                $children_count,
+                $animals_count,
                 $services,
                 ''
             );
@@ -929,31 +1434,41 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
             if (!empty($coupon)) {
                 $args[count($args)-1] = $coupon;
-                $data['price_discount'] = call_user_func_array(
+                $price_with_coupon = call_user_func_array(
                     array('Listeo_Core_Bookings_Calendar', 'calculate_price'),
                     $args
                 );
+                if ($price_with_coupon <= $data['price']) {
+                    $data['price_discount'] = $price_with_coupon;
+                }
             }
         } catch (Error $e) {
             $data['price'] = Listeo_Core_Bookings_Calendar::calculate_price(
-                $request['listing_id'],
+                $listing_id,
                 $request['date_start'],
                 $request['date_end'],
                 $multiply,
+                $children_count,
+                $animals_count,
                 $services,
                 ''
             );
 
             if (!empty($coupon))
             {
-                $data['price_discount'] = Listeo_Core_Bookings_Calendar::calculate_price(
+                $price_with_coupon = Listeo_Core_Bookings_Calendar::calculate_price(
                     $request['listing_id'],
                     $request['date_start'],
                     $request['date_end'],
                     $multiply,
+                    $children_count,
+                    $animals_count,
                     $services,
                     $coupon
                 );
+                if ($price_with_coupon <= $data['price']) {
+                    $data['price_discount'] = $price_with_coupon;
+                }
             }
         }
         // $_slots = $this->update_slots($request);
@@ -982,6 +1497,18 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         foreach ($bookings as $booking)
         {
             $item = $booking;
+            // decoded normalized map under comment_obj
+            if (isset($item['comment']) && is_string($item['comment'])) {
+                $decoded_comment = json_decode($item['comment'], true);
+                if (is_array($decoded_comment)) {
+                    foreach ($decoded_comment as $cKey => $cVal) {
+                        if ($cVal === false || $cVal === null) {
+                            $decoded_comment[$cKey] = '';
+                        }
+                    }
+                    $item['comment_obj'] = $decoded_comment;
+                }
+            }
             if (isset($booking['order_id']))
             {
                 $order_id = $booking['order_id'];
@@ -990,14 +1517,252 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 $item['order_status'] = $order_data['status'];
             }
             $post_id = $booking['listing_id'];
+            $listing_type = get_post_meta($post_id, '_listing_type', true);
+            $item['listing_type'] = $listing_type ? $listing_type : 'service';
             $item['featured_image'] = get_the_post_thumbnail_url($post_id);
             $item['title'] = get_the_title($post_id);
+            $item['gallery_images'] = $this->get_post_gallery_images_listeo(['id' => $post_id]);
+
+            // For event listings, also expose event start/end (listing's own dates, not booking date)
+            if ($item['listing_type'] === 'event') {
+                $event_start = get_post_meta($post_id, '_event_date', true);
+                $event_end = get_post_meta($post_id, '_event_date_end', true);
+
+                // Convert to Y-m-d H:i:s format (same as date_start/date_end)
+                // Handle timestamp, m/d/Y H:i, or already correct format
+                if (!empty($event_start) && !preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $event_start)) {
+                    $ts = is_numeric($event_start) ? intval($event_start) : strtotime($event_start);
+                    $event_start = $ts !== false ? date('Y-m-d H:i:s', $ts) : $event_start;
+                }
+                if (!empty($event_end) && !preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $event_end)) {
+                    $ts = is_numeric($event_end) ? intval($event_end) : strtotime($event_end);
+                    $event_end = $ts !== false ? date('Y-m-d H:i:s', $ts) : $event_end;
+                }
+
+                $item['event_start'] = $event_start;
+                $item['event_end'] = $event_end;
+            }
+            if (isset($booking['owner_id'])) {
+                $owner_data = get_userdata($booking['owner_id']);
+
+                $item['owner_name'] = $owner_data ? $owner_data->display_name : '';
+                $item['owner_email'] = $owner_data ? $owner_data->user_email : '';
+                $item['owner_phone'] = get_user_meta($booking['owner_id'], 'billing_phone', true);
+            }
 
             $data[] = $item;
 
         }
 
         return $data;
+    }
+
+    public function get_ticket($request)
+    {
+        global $wpdb;
+
+        $booking_id = isset($request['booking_id']) ? intval($request['booking_id']) : 0;
+
+        if (!$booking_id) {
+            wp_die('Invalid booking ID');
+        }
+
+        // Get booking details
+        $booking = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}bookings_calendar WHERE id = %d",
+                $booking_id
+            ),
+            ARRAY_A
+        );
+
+        if (!$booking) {
+            wp_die('Booking not found');
+        }
+
+        // Check if user is authorized (booking owner or listing owner)
+        $current_user_id = get_current_user_id();
+
+        // Try to get user from cookie parameter if not logged in via WP
+        if (!$current_user_id && isset($_GET['cookie'])) {
+            $cookie = base64_decode($_GET['cookie']);
+            if ($cookie) {
+                $cookie_parts = explode('|', $cookie);
+                if (count($cookie_parts) >= 1) {
+                    $username = $cookie_parts[0];
+                    $user = get_user_by('login', $username);
+                    if ($user) {
+                        $current_user_id = $user->ID;
+                        // Set current user for WordPress session
+                        wp_set_current_user($current_user_id);
+                    }
+                }
+            }
+        }
+
+        if (!$current_user_id ||
+            ($current_user_id != $booking['bookings_author'] &&
+             $current_user_id != $booking['owner_id'])) {
+            wp_die('You are not authorized to access this ticket');
+        }
+
+        // Check if booking is paid
+        // Case 1: status = 'paid' directly (no order involved)
+        // Case 2: status = 'confirmed' and order exists with status completed/processing
+        $is_paid = false;
+
+        if ($booking['status'] === 'paid') {
+            // Direct paid status (no WooCommerce order)
+            $is_paid = true;
+        } elseif ($booking['status'] === 'confirmed' && !empty($booking['order_id'])) {
+            // Has order - check order status
+            $order = wc_get_order($booking['order_id']);
+            if ($order) {
+                $order_status = $order->get_status();
+                $is_paid = in_array($order_status, array('completed', 'processing'));
+            }
+        }
+
+        if (!$is_paid) {
+            wp_die('This booking is not paid yet');
+        }
+
+        // Check if ticket option is enabled in Listeo settings
+        $ticket_status = get_option('listeo_ticket_status');
+        if (!$ticket_status) {
+            wp_die('Ticket feature is not enabled. Please contact the administrator.');
+        }
+
+        // Ensure phpqrcode library is loaded
+        if (!defined('LISTEO_PLUGIN_DIR')) {
+            define('LISTEO_PLUGIN_DIR', WP_PLUGIN_DIR . '/listeo-core/');
+        }
+
+        if (!class_exists('QRcode')) {
+            $qrlib_path = LISTEO_PLUGIN_DIR . 'lib/phpqrcode/qrlib.php';
+            if (file_exists($qrlib_path)) {
+                require_once $qrlib_path;
+            } else {
+                wp_die('QR Code library not found at: ' . $qrlib_path);
+            }
+        }
+
+        // Use Listeo's native QR system class
+        if (!class_exists('Listeo_Core_QR')) {
+            wp_die('Listeo QR system not available');
+        }
+
+        // Clear any previous output buffers to prevent JSON wrapping
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        // Set proper HTML content type header before rendering
+        if (!headers_sent()) {
+            status_header(200);
+            header('Content-Type: text/html; charset=utf-8');
+            header('Cache-Control: no-cache, must-revalidate');
+            header('X-Content-Type-Options: nosniff');
+        }
+
+        $listeo_qr = new Listeo_Core_QR();
+
+        // Use Listeo's get_ticket() method - it handles everything internally
+        // This ensures exact same output as admin (ticket code, QR code, HTML)
+        $listeo_qr->get_ticket($booking_id);
+    }
+
+    public function cancel_booking($request)
+    {
+        global $wpdb;
+
+        $body = json_decode($request->get_body(), true);
+        $booking_id = isset($body['booking_id']) ? intval($body['booking_id']) : 0;
+
+        if (!$booking_id) {
+            return new WP_Error('invalid_booking', 'Invalid booking ID', array('status' => 400));
+        }
+
+        // Get booking details
+        $booking = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}bookings_calendar WHERE id = %d",
+                $booking_id
+            ),
+            ARRAY_A
+        );
+
+        if (!$booking) {
+            return new WP_Error('booking_not_found', 'Booking not found', array('status' => 404));
+        }
+
+        // Update booking status to cancelled
+        $wpdb->update(
+            $wpdb->prefix . 'bookings_calendar',
+            array('status' => 'cancelled'),
+            array('id' => $booking_id),
+            array('%s'),
+            array('%d')
+        );
+
+        // If there's an order associated, optionally cancel it
+        if (!empty($booking['order_id'])) {
+            $order = wc_get_order($booking['order_id']);
+            if ($order && in_array($order->get_status(), array('pending', 'on-hold'))) {
+                $order->update_status('cancelled', 'Booking cancelled by user.');
+            }
+        }
+
+        return array(
+            'success' => true,
+            'message' => 'Booking cancelled successfully'
+        );
+    }
+
+    public function delete_booking($request)
+    {
+        global $wpdb;
+
+        $body = json_decode($request->get_body(), true);
+        $booking_id = isset($body['booking_id']) ? intval($body['booking_id']) : 0;
+
+        if (!$booking_id) {
+            return new WP_Error('invalid_booking', 'Invalid booking ID', array('status' => 400));
+        }
+
+        // Get booking details to check status
+        $booking = $wpdb->get_row(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}bookings_calendar WHERE id = %d",
+                $booking_id
+            ),
+            ARRAY_A
+        );
+
+        if (!$booking) {
+            return new WP_Error('booking_not_found', 'Booking not found', array('status' => 404));
+        }
+
+        // Only allow deletion of expired bookings
+        if ($booking['status'] !== 'expired') {
+            return new WP_Error('invalid_status', 'Only expired bookings can be deleted', array('status' => 400));
+        }
+
+        // Delete the booking
+        $deleted = $wpdb->delete(
+            $wpdb->prefix . 'bookings_calendar',
+            array('id' => $booking_id),
+            array('%d')
+        );
+
+        if ($deleted === false) {
+            return new WP_Error('delete_failed', 'Failed to delete booking', array('status' => 500));
+        }
+
+        return array(
+            'success' => true,
+            'message' => 'Booking deleted successfully'
+        );
     }
 
     public function update_slots($request)
@@ -1222,6 +1987,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         $listing_meta = get_post_meta($listing_id, '', true);
 
         $listing_owner = get_post_field('post_author', $listing_id);
+        $listing_address = get_post_meta($listing_id, '_address', true);
 
         switch ($listing_meta['_listing_type'][0])
         {
@@ -1234,11 +2000,18 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     'message' => $object['message'],
                     'tickets' => $tickets,
                     'service' => $comment_services,
+                    'booking_location' => $listing_address,
                     'billing_address_1' => $billing_address_1,
                     'billing_postcode' => $billing_postcode,
                     'billing_city' => $billing_city,
                     'billing_country' => $billing_country
                 );
+                // Normalize boolean false values to empty strings for mobile client consistency
+                foreach ($comment as $key => $value) {
+                    if ($value === false) {
+                        $comment[$key] = '';
+                    }
+                }
 
                 $booking_id = self::insert_booking(array(
                     'owner_id' => $listing_owner,
@@ -1280,25 +2053,34 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                         $price = $calculate_price($listing_id, $date_start, $date_end, 1, $services, $coupon);
                     }
 
+                    $comment_arr = array(
+                        'first_name' => $first_name,
+                        'last_name' => $last_name,
+                        'email' => $email,
+                        'phone' => $billing_phone,
+                        'message' => $object['message'],
+                        'adults' => $adults,
+                        'service' => $comment_services,
+                        'booking_location' => $listing_address,
+                        'billing_address_1' => $billing_address_1,
+                        'billing_postcode' => $billing_postcode,
+                        'billing_city' => $billing_city,
+                        'billing_country' => $billing_country
+                    );
+                    if (is_iterable($comment_arr)) {
+                    foreach ($comment_arr as $key => $value) {
+                        if ($value === false) {
+                            $comment_arr[$key] = '';
+                        }
+                    }
+                    }
                     $booking_id = self::insert_booking(array(
                         'owner_id' => $listing_owner,
                         'listing_id' => $listing_id,
                         'bookings_author' => $_user_id,
                         'date_start' => $date_start,
                         'date_end' => $date_end,
-                        'comment' => json_encode(array(
-                            'first_name' => $first_name,
-                            'last_name' => $last_name,
-                            'email' => $email,
-                            'phone' => $billing_phone,
-                            'message' => $object['message'],
-                            'adults' => $adults,
-                            'service' => $comment_services,
-                            'billing_address_1' => $billing_address_1,
-                            'billing_postcode' => $billing_postcode,
-                            'billing_city' => $billing_city,
-                            'billing_country' => $billing_country
-                        )),
+                        'comment' => json_encode($comment_arr),
                         'type' => 'reservation',
                         'price' => $price,
                     ));
@@ -1334,26 +2116,34 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                         $price = $calculate_price($listing_id, $date_start, $date_end, 1, $services, $coupon);
                     }
                     $hour_end = (isset($_hour_end) && !empty($_hour_end)) ? $_hour_end : $_hour;
+                    $comment_arr = array(
+                        'first_name' => $first_name,
+                        'last_name' => $last_name,
+                        'email' => $email,
+                        'phone' => $billing_phone,
+                        'adults' => $adults,
+                        'message' => $object['message'],
+                        'service' => $comment_services,
+                        'booking_location' => $listing_address,
+                        'billing_address_1' => $billing_address_1,
+                        'billing_postcode' => $billing_postcode,
+                        'billing_city' => $billing_city,
+                        'billing_country' => $billing_country
+                    );
+                    if (is_iterable($comment_arr)) {
+                    foreach ($comment_arr as $key => $value) {
+                        if ($value === false) {
+                            $comment_arr[$key] = '';
+                        }
+                    }
+                }
                     $booking_id = self::insert_booking(array(
                         'bookings_author' => $_user_id,
                         'owner_id' => $listing_owner,
                         'listing_id' => $listing_id,
                         'date_start' => $date_start . ' ' . $_hour . ':00',
                         'date_end' => $date_end . ' ' . $hour_end . ':00',
-                        'comment' => json_encode(array(
-                            'first_name' => $first_name,
-                            'last_name' => $last_name,
-                            'email' => $email,
-                            'phone' => $billing_phone,
-                            'adults' => $adults,
-                            'message' => $object['message'],
-                            'service' => $comment_services,
-                            'billing_address_1' => $billing_address_1,
-                            'billing_postcode' => $billing_postcode,
-                            'billing_city' => $billing_city,
-                            'billing_country' => $billing_country
-
-                        )),
+                        'comment' => json_encode($comment_arr),
                         'type' => 'reservation',
                         'price' => $price,
                     ));
@@ -1382,26 +2172,33 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                             $price = $calculate_price($listing_id, $date_start, $date_end, 1, $services, $coupon);
                         }
 
+                        $comment_arr = array(
+                            'first_name' => $first_name,
+                            'last_name' => $last_name,
+                            'email' => $email,
+                            'phone' => $billing_phone,
+                            'adults' => $adults,
+                            'message' => $object['message'],
+                            'service' => $comment_services,
+                            'billing_address_1' => $billing_address_1,
+                            'billing_postcode' => $billing_postcode,
+                            'billing_city' => $billing_city,
+                            'billing_country' => $billing_country
+                        );
+                        if (is_iterable($comment_arr)) {
+                        foreach ($comment_arr as $key => $value) {
+                            if ($value === false) {
+                                $comment_arr[$key] = '';
+                            }
+                        }
+                        }
                         $booking_id = self::insert_booking(array(
                             'bookings_author' => $_user_id,
                             'owner_id' => $listing_owner,
                             'listing_id' => $listing_id,
                             'date_start' => $date_start . ' ' . $hour_start,
                             'date_end' => $date_end . ' ' . $hour_end,
-                            'comment' => json_encode(array(
-                                'first_name' => $first_name,
-                                'last_name' => $last_name,
-                                'email' => $email,
-                                'phone' => $billing_phone,
-                                'adults' => $adults,
-                                'message' => $object['message'],
-                                'service' => $comment_services,
-                                'billing_address_1' => $billing_address_1,
-                                'billing_postcode' => $billing_postcode,
-                                'billing_city' => $billing_city,
-                                'billing_country' => $billing_country
-
-                            )),
+                            'comment' => json_encode($comment_arr),
                             'type' => 'reservation',
                             'price' => $price,
                         ));
@@ -1833,7 +2630,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             $average = $total / count($comments);
 
             return ['totalReview' => count($comments) , 'totalRate' => number_format($average, $decimals) ];
-        }
+    }
 
         public function get_reviews(WP_REST_Request $request)
         {
@@ -1861,7 +2658,54 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 $status = wp_get_comment_status($item->comment_ID);
                 $countRating = get_comment_meta($item->comment_ID, $commentKey, true);
                 $current_rating = get_comment_meta($item->comment_ID, $commentKey, true);
-                $results[] = ["id" => $item->comment_ID, "rating" => $countRating, "status" => $status, "author_name" => $item->comment_author, "date" => $item->comment_date, "content" => $item->comment_content, "author_email" => $item->comment_author_email];
+
+                // Get review images
+                $gallery_images = [];
+                if ($this->_isListeo) {
+                    // Listeo stores attachment IDs in 'listeo-attachment-id' meta
+                    $attachment_ids = get_comment_meta($item->comment_ID, 'listeo-attachment-id', true);
+
+                    if (!empty($attachment_ids)) {
+                        // Can be single ID or comma-separated IDs
+                        $ids = is_array($attachment_ids) ? $attachment_ids : explode(',', $attachment_ids);
+
+                        foreach ($ids as $attachment_id) {
+                            $attachment_id = trim($attachment_id);
+                            if (is_numeric($attachment_id)) {
+                                $url = wp_get_attachment_url($attachment_id);
+                                if ($url) {
+                                    $gallery_images[] = $url;
+                                }
+                            }
+                        }
+                    }
+                } else if ($this->_isMyListing) {
+                    $images = get_comment_meta($item->comment_ID, '_case27_review_images', true);
+                    if (is_array($images)) {
+                        $gallery_images = $images;
+                    }
+                }
+
+                // Get author avatar
+                $author_avatar = '';
+                if (!empty($item->user_id)) {
+                    $avatar = get_user_meta($item->user_id, 'user_avatar', true);
+                    $author_avatar = (!empty($avatar) && !is_bool($avatar)) ? $avatar[0] : get_avatar_url($item->user_id);
+                } else {
+                    $author_avatar = get_avatar_url($item->comment_author_email);
+                }
+
+                $results[] = [
+                    "id" => $item->comment_ID,
+                    "rating" => $countRating,
+                    "status" => $status,
+                    "author_name" => $item->comment_author,
+                    "date" => $item->comment_date,
+                    "content" => $item->comment_content,
+                    "author_email" => $item->comment_author_email,
+                    "author_avatar" => $author_avatar,
+                    "gallery_images" => $gallery_images
+                ];
             }
             return $results;
         }
@@ -1870,12 +2714,20 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         {
             if ($this->_isListingPro)
             {
+                // Override comment status if needed
+                // Respect status from mobile app
+                // 'approved' -> 'publish', 'hold' -> 'pending'
+                $post_status = 'publish'; // default
+                if (isset($request['status']) && !empty($request['status'])) {
+                    $post_status = ($request['status'] === 'approved') ? 'publish' : 'pending';
+                }
+
                 $post_information = array(
                     'post_author' => $request['post_author'],
                     'post_title' => $request['post_title'],
                     'post_content' => $request['post_content'],
                     'post_type' => 'lp-reviews',
-                    'post_status' => 'publish'
+                    'post_status' => $post_status
                 );
                 $postID = wp_insert_post($post_information);
 
@@ -1883,6 +2735,28 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 listing_set_metabox('listing_id', $request['listing_id'], $postID);
                 listingpro_set_listing_ratings($postID, $request['listing_id'], $request['rating'], 'add');
                 listingpro_total_reviews_add($request['listing_id']);
+
+                // Handle review images from mobile app
+                if (isset($request['images']) && !empty($request['images'])) {
+                    $images = explode(',', $request['images']);
+                    $uploaded_image_ids = array();
+
+                    foreach ($images as $index => $base64_image) {
+                        if (empty($base64_image)) continue;
+
+                        try {
+                            $attachment_id = upload_image_from_mobile($base64_image, $index, $request['post_author']);
+                            if ($attachment_id) {
+                                $uploaded_image_ids[] = $attachment_id;
+                            }
+                        } catch (Exception $e) {}
+                    }
+
+                    if (!empty($uploaded_image_ids)) {
+                        update_post_meta($postID, 'gallery_image_ids', implode(',', $uploaded_image_ids));
+                    }
+                }
+
                 return 'Success';
             }
 
@@ -1897,6 +2771,58 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     wp_set_current_user( $user_id );
                 }
                 $comment = wp_handle_comment_submission( wp_unslash( $_POST ) );
+
+                // Override comment status if needed
+                // Respect status from mobile app
+                // 'approved' -> 'publish', 'hold' -> 'pending'
+                if (!is_wp_error($comment) && isset($request['status']) && !empty($request['status'])) {
+                    $desired_status = $request['status'];
+                    if ($comment->comment_approved !== $desired_status) {
+                        wp_set_comment_status($comment->comment_ID, $desired_status === 'approved' ? 'approve' : 'hold');
+                    }
+                }
+
+                // Handle review images from mobile app
+                if (!is_wp_error($comment) && isset($request['images']) && !empty($request['images'])) {
+                    $images = explode(',', $request['images']);
+                    $uploaded_images = array();
+
+                    $user_id = wp_validate_auth_cookie($cookie, 'logged_in');
+
+                    foreach ($images as $index => $base64_image) {
+                        if (empty($base64_image)) continue;
+
+                        try {
+                            $attachment_id = upload_image_from_mobile($base64_image, $index, $user_id);
+                            if ($attachment_id) {
+                                $image_url = wp_get_attachment_url($attachment_id);
+                                if ($image_url) {
+                                    $uploaded_images[] = $image_url;
+                                }
+                            }
+                        } catch (Exception $e) {}
+                    }
+
+                    // Save images to comment meta
+                    if (!empty($uploaded_images)) {
+                        if ($this->_isListeo) {
+                            update_comment_meta($comment->comment_ID, 'listeo-review-images', $uploaded_images);
+                            $attachment_ids = array();
+                            foreach ($uploaded_images as $img_url) {
+                                $attachment_id = attachment_url_to_postid($img_url);
+                                if ($attachment_id) {
+                                    $attachment_ids[] = $attachment_id;
+                                }
+                            }
+                            if (!empty($attachment_ids)) {
+                                update_comment_meta($comment->comment_ID, 'listeo-attachment-id', implode(',', $attachment_ids));
+                            }
+                        } elseif ($this->_isMyListing) {
+                            update_comment_meta($comment->comment_ID, '_case27_review_images', $uploaded_images);
+                        }
+                    }
+                }
+
                 return $comment;
             }
 

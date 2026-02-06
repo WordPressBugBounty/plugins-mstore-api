@@ -2,6 +2,10 @@
 
 class DeliveryWooHelper
 {
+    // Meta key constants to prevent SQL injection
+    const META_KEY_LDDFW_DRIVER_ID = 'lddfw_driverid';
+    const META_KEY_DDWC_DRIVER_ID = 'ddwc_driver_id';
+
     public function sendError($code, $message, $statusCode)
     {
         return new WP_Error($code, $message, array(
@@ -21,6 +25,12 @@ class DeliveryWooHelper
             return false;
         }
         return true;
+    }
+
+    protected function is_hpos_enabled()
+    {
+        return class_exists('\Automattic\WooCommerce\Utilities\OrderUtil') &&
+               \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
     }
 
 
@@ -56,37 +66,67 @@ class DeliveryWooHelper
 
         if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php')) {
             global $wpdb;
-            $table_1 = "{$wpdb->prefix}posts";
-            $table_2 = "{$wpdb->prefix}postmeta";
-            $base_sql = "SELECT ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.ID = {$table_2}.post_id";
-            $base_sql .= " WHERE `{$table_2}`.`meta_key` = 'lddfw_driverid' AND `{$table_2}`.`meta_value` = %s";
-            $base_sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
 
-            $total = count($wpdb->get_results($wpdb->prepare($base_sql . " GROUP BY {$table_1}.ID", $user_id)));
-            $pending_count = count($wpdb->get_results($wpdb->prepare(
-                $base_sql . " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery') GROUP BY {$table_1}.ID", 
-                $user_id
-            )));
-            $delivered_count = count($wpdb->get_results($wpdb->prepare(
-                $base_sql . " AND {$table_1}.post_status = 'wc-completed' GROUP BY {$table_1}.ID",
-                $user_id
-            )));
+            if ($this->is_hpos_enabled()) {
+                // Query from HPOS tables
+                $table_1 = "{$wpdb->prefix}wc_orders";
+                $table_2 = "{$wpdb->prefix}wc_orders_meta";
+                $meta_key = self::META_KEY_LDDFW_DRIVER_ID;
+                $base_sql = "SELECT {$table_1}.id FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.id = {$table_2}.order_id";
+                $base_sql .= " WHERE {$table_2}.meta_key = %s AND {$table_2}.meta_value = %s";
+                $base_sql .= " AND {$table_1}.type = 'shop_order'";
+
+                $total = count($wpdb->get_results($wpdb->prepare($base_sql . " GROUP BY {$table_1}.id", $meta_key, $user_id)));
+                $pending_count = count($wpdb->get_results($wpdb->prepare(
+                    $base_sql . " AND ({$table_1}.status = 'wc-driver-assigned' OR {$table_1}.status = 'wc-out-for-delivery') GROUP BY {$table_1}.id",
+                    $meta_key,
+                    $user_id
+                )));
+                $delivered_count = count($wpdb->get_results($wpdb->prepare(
+                    $base_sql . " AND {$table_1}.status = 'wc-completed' GROUP BY {$table_1}.id",
+                    $meta_key,
+                    $user_id
+                )));
+            } else {
+                // Query from legacy tables
+                $table_1 = "{$wpdb->prefix}posts";
+                $table_2 = "{$wpdb->prefix}postmeta";
+                $meta_key = self::META_KEY_LDDFW_DRIVER_ID;
+                $base_sql = "SELECT ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.ID = {$table_2}.post_id";
+                $base_sql .= " WHERE `{$table_2}`.`meta_key` = %s AND `{$table_2}`.`meta_value` = %s";
+                $base_sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
+
+                $total = count($wpdb->get_results($wpdb->prepare($base_sql . " GROUP BY {$table_1}.ID", $meta_key, $user_id)));
+                $pending_count = count($wpdb->get_results($wpdb->prepare(
+                    $base_sql . " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery') GROUP BY {$table_1}.ID",
+                    $meta_key,
+                    $user_id
+                )));
+                $delivered_count = count($wpdb->get_results($wpdb->prepare(
+                    $base_sql . " AND {$table_1}.post_status = 'wc-completed' GROUP BY {$table_1}.ID",
+                    $meta_key,
+                    $user_id
+                )));
+            }
         }
         else if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
             global $wpdb;
             $table_1 = "{$wpdb->prefix}posts";
             $table_2 = "{$wpdb->prefix}postmeta";
+            $meta_key = self::META_KEY_DDWC_DRIVER_ID;
             $base_sql = "SELECT ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.ID = {$table_2}.post_id";
-            $base_sql .= " WHERE `{$table_2}`.`meta_key` = 'ddwc_driver_id' AND `{$table_2}`.`meta_value` = %s";
+            $base_sql .= " WHERE `{$table_2}`.`meta_key` = %s AND `{$table_2}`.`meta_value` = %s";
             $base_sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
 
-            $total = count($wpdb->get_results($wpdb->prepare($base_sql . " GROUP BY {$table_1}.ID", $user_id)));
+            $total = count($wpdb->get_results($wpdb->prepare($base_sql . " GROUP BY {$table_1}.ID", $meta_key, $user_id)));
             $pending_count = count($wpdb->get_results($wpdb->prepare(
-                $base_sql . " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery' OR `{$table_1}`.`post_status` = 'wc-processing') GROUP BY {$table_1}.ID", 
+                $base_sql . " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery' OR `{$table_1}`.`post_status` = 'wc-processing') GROUP BY {$table_1}.ID",
+                $meta_key,
                 $user_id
             )));
             $delivered_count = count($wpdb->get_results($wpdb->prepare(
                 $base_sql . " AND `{$table_1}`.`post_status` = 'wc-completed' GROUP BY {$table_1}.ID",
+                $meta_key,
                 $user_id
             )));
         }
@@ -170,38 +210,77 @@ class DeliveryWooHelper
             $page = ($page - 1) * $per_page;
             global $wpdb;
 
-            $table_1 = "{$wpdb->prefix}posts";
-            $table_2 = "{$wpdb->prefix}postmeta";
-            $sql = "SELECT ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.ID = {$table_2}.post_id";
-            $sql .= " WHERE `{$table_2}`.`meta_key` = 'lddfw_driverid' AND `{$table_2}`.`meta_value` = {$user_id}";
-            if (isset($request['status']) && !empty($request['status'])) {
-                $status = sanitize_text_field($request['status']);
-                if ($status == 'pending') {
-                    $sql .= " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery' OR `{$table_1}`.`post_status` = 'wc-processing')";
+            if ($this->is_hpos_enabled()) {
+                // Query from HPOS tables
+                $table_1 = "{$wpdb->prefix}wc_orders";
+                $table_2 = "{$wpdb->prefix}wc_orders_meta";
+                $meta_key = self::META_KEY_LDDFW_DRIVER_ID;
+                $sql = "SELECT {$table_1}.id as ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.id = {$table_2}.order_id";
+                $sql .= " WHERE {$table_2}.meta_key = %s AND {$table_2}.meta_value = %s";
+                $sql .= " AND {$table_1}.type = 'shop_order'";
+
+                if (isset($request['status']) && !empty($request['status'])) {
+                    $status = sanitize_text_field($request['status']);
+                    if ($status == 'pending') {
+                        $sql .= " AND ({$table_1}.status = 'wc-driver-assigned' OR {$table_1}.status = 'wc-out-for-delivery' OR {$table_1}.status = 'wc-processing')";
+                    }
+                    if ($status == 'delivered') {
+                        $sql .= " AND {$table_1}.status = 'wc-completed'";
+                    }
+                } else {
+                    $sql .= " AND ({$table_1}.status = 'wc-driver-assigned' OR {$table_1}.status = 'wc-out-for-delivery' OR {$table_1}.status = 'wc-completed' OR {$table_1}.status = 'wc-processing')";
                 }
-                if ($status == 'delivered') {
-                    $sql .= " AND `{$table_1}`.`post_status` = 'wc-completed'";
+
+                if (isset($request['search'])) {
+                    $order_search = sanitize_text_field($request['search']);
+                    $sql .= " AND {$table_1}.id LIKE %s";
+                }
+
+                $sql .= " GROUP BY {$table_1}.id ORDER BY {$table_1}.id DESC LIMIT %d OFFSET %d";
+
+                if(isset($order_search)){
+                    $sql = $wpdb->prepare($sql, $meta_key, $user_id, '%'.$order_search.'%', $per_page, $page);
+                } else {
+                    $sql = $wpdb->prepare($sql, $meta_key, $user_id, $per_page, $page);
                 }
             } else {
-                $sql .= " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery' OR `{$table_1}`.`post_status` = 'wc-completed' OR `{$table_1}`.`post_status` = 'wc-processing')";
-            }
-            if (isset($request['search'])) {
-                $order_search = sanitize_text_field($request['search']);
-                $sql .= " AND $table_1.`ID` LIKE %s";
-            }
-            $sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
-            $sql .= " GROUP BY $table_1.`ID` ORDER BY $table_1.`ID` DESC LIMIT %d OFFSET %d";
+                // Query from legacy tables
+                $table_1 = "{$wpdb->prefix}posts";
+                $table_2 = "{$wpdb->prefix}postmeta";
+                $meta_key = self::META_KEY_LDDFW_DRIVER_ID;
+                $sql = "SELECT ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.ID = {$table_2}.post_id";
+                $sql .= " WHERE `{$table_2}`.`meta_key` = %s AND `{$table_2}`.`meta_value` = %s";
+                $sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
 
-            if(isset($order_search)){
-                $sql = $wpdb->prepare($sql, '%'.$order_search.'%', $per_page, $page);
-            }else{
-                $sql = $wpdb->prepare($sql, $per_page, $page);
+                if (isset($request['status']) && !empty($request['status'])) {
+                    $status = sanitize_text_field($request['status']);
+                    if ($status == 'pending') {
+                        $sql .= " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery' OR `{$table_1}`.`post_status` = 'wc-processing')";
+                    }
+                    if ($status == 'delivered') {
+                        $sql .= " AND `{$table_1}`.`post_status` = 'wc-completed'";
+                    }
+                } else {
+                    $sql .= " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery' OR `{$table_1}`.`post_status` = 'wc-completed' OR `{$table_1}`.`post_status` = 'wc-processing')";
+                }
+                if (isset($request['search'])) {
+                    $order_search = sanitize_text_field($request['search']);
+                    $sql .= " AND $table_1.`ID` LIKE %s";
+                }
+                $sql .= " GROUP BY $table_1.`ID` ORDER BY $table_1.`ID` DESC LIMIT %d OFFSET %d";
+
+                if (isset($order_search)){
+                    $sql = $wpdb->prepare($sql, $meta_key, $user_id, '%'.$order_search.'%', $per_page, $page);
+                } else {
+                    $sql = $wpdb->prepare($sql, $meta_key, $user_id, $per_page, $page);
+                }
             }
 
             $items = $wpdb->get_results($sql);
             foreach ($items as $item) {
-                $order = wc_get_order($item);
-                if (is_bool($order)) {
+                $order_id = isset($item->ID) ? $item->ID : $item->id;
+                $order = wc_get_order($order_id);
+                if (!$order || is_bool($order)) {
                     continue;
                 }
                 $response = $api->prepare_item_for_response($order, $request);
@@ -242,8 +321,9 @@ class DeliveryWooHelper
 
             $table_1 = "{$wpdb->prefix}posts";
             $table_2 = "{$wpdb->prefix}postmeta";
+            $meta_key = self::META_KEY_DDWC_DRIVER_ID;
             $sql = "SELECT ID FROM {$table_1} INNER JOIN {$table_2} ON {$table_1}.ID = {$table_2}.post_id";
-            $sql .= " WHERE `{$table_2}`.`meta_key` = 'ddwc_driver_id' AND `{$table_2}`.`meta_value` = {$user_id}";
+            $sql .= " WHERE `{$table_2}`.`meta_key` = %s AND `{$table_2}`.`meta_value` = %s";
             if (isset($request['status']) && !empty($request['status'])) {
                 $status = sanitize_text_field($request['status']);
                 if ($status == 'pending') {
@@ -263,9 +343,9 @@ class DeliveryWooHelper
             $sql .= " GROUP BY $table_1.`ID` ORDER BY $table_1.`ID` DESC LIMIT %d OFFSET %d";
 
             if(isset($order_search)){
-                $sql = $wpdb->prepare($sql, '%'.$order_search.'%', $per_page, $page);
+                $sql = $wpdb->prepare($sql, $meta_key, $user_id, '%'.$order_search.'%', $per_page, $page);
             }else{
-                $sql = $wpdb->prepare($sql, $per_page, $page);
+                $sql = $wpdb->prepare($sql, $meta_key, $user_id, $per_page, $page);
             }
 
             $items = $wpdb->get_results($sql);

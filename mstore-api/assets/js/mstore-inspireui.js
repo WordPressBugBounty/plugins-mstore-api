@@ -157,4 +157,49 @@ jQuery(document).ready(function ($) {
     });
     return false;
   });
+
+  // Category Image Upload
+  if ($(".flutter_category_media_button").length > 0) {
+    if (typeof wp !== "undefined" && wp.media && wp.media.editor) {
+      $(document).on(
+        "click",
+        ".flutter_category_media_button",
+        function (e) {
+          e.preventDefault();
+          var button = $(this);
+          var imageIdInput = $("#category-image-id");
+          var imageWrapper = $("#category-image-wrapper");
+
+          var custom_uploader = wp
+            .media({
+              title: "Select Image",
+              button: {
+                text: "Use this image",
+              },
+              multiple: false,
+            })
+            .on("select", function () {
+              var attachment = custom_uploader
+                .state()
+                .get("selection")
+                .first()
+                .toJSON();
+              imageIdInput.val(attachment.id);
+              imageWrapper.html(
+                '<img src="' +
+                  attachment.url +
+                  '" style="max-width:150px;height:auto;" />'
+              );
+            })
+            .open();
+        }
+      );
+
+      $(document).on("click", ".flutter_category_media_remove", function (e) {
+        e.preventDefault();
+        $("#category-image-id").val("");
+        $("#category-image-wrapper").html("");
+      });
+    }
+  }
 });

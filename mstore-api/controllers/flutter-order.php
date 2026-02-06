@@ -191,8 +191,8 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
                     }
                 }
                 $value['meta_data'] = $meta_data;
-                $line_items[] = $value;
                }
+               $line_items[] = $value;
             }
             $params['line_items'] = $line_items;
         }
@@ -201,6 +201,10 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
 		    $request->set_body_params( $params );
         }
         /************************/
+        $auction_validation = $this->validate_auction_line_items( $params );
+        if ( is_wp_error( $auction_validation ) ) {
+            return $auction_validation;
+        }
 
         // Same process from the function WC_AJAX()->update_order_review in the
         // file wp-content/plugins/woocommerce/includes/class-wc-ajax.php
@@ -329,6 +333,85 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
         }
         
         return  $response;
+    }
+
+    /**
+     * Validate auction line items before creating order.
+     *
+     * @param array $params Request body params.
+     * @return null|WP_Error
+     */
+    private function validate_auction_line_items( $params ) {
+        if ( empty( $params['line_items'] ) || ! is_array( $params['line_items'] ) ) {
+            return null;
+        }
+
+        if ( ! class_exists( 'WooCommerce_simple_auction' ) ) {
+            return null;
+        }
+
+        $customer_id = isset( $params['customer_id'] ) ? absint( $params['customer_id'] ) : 0;
+
+        foreach ( $params['line_items'] as $line_item ) {
+            $product_id   = isset( $line_item['product_id'] ) ? absint( $line_item['product_id'] ) : 0;
+            $variation_id = isset( $line_item['variation_id'] ) ? absint( $line_item['variation_id'] ) : 0;
+            $target_id    = $variation_id > 0 ? $variation_id : $product_id;
+
+            if ( ! $target_id ) {
+                continue;
+            }
+
+            $product = wc_get_product( $target_id );
+            if ( ! $product || ! method_exists( $product, 'get_type' ) || $product->get_type() !== 'auction' ) {
+                continue;
+            }
+
+            if ( $customer_id <= 0 ) {
+                return new WP_Error(
+                    'auction_login_required',
+                    __( 'You must be logged in to pay for auction products.', 'wc_simple_auctions' ),
+                    array( 'status' => 401 )
+                );
+            }
+
+            if ( (string) $product->get_auction_closed() !== '2' ) {
+                return new WP_Error(
+                    'auction_not_ready',
+                    __( 'This auction is closed.', 'wc_simple_auctions' ),
+                    array( 'status' => 400 )
+                );
+            }
+
+            if ( $product->get_auction_payed() ) {
+                return new WP_Error(
+                    'auction_already_paid',
+                    __( 'This auction product has already been paid for.', 'wc_simple_auctions' ),
+                    array( 'status' => 400 )
+                );
+            }
+
+            if ( $product->get_auction_type() === 'reverse' && get_option( 'simple_auctions_remove_pay_reverse', 'no' ) === 'yes' ) {
+                return new WP_Error(
+                    'auction_reverse_not_payable',
+                    __( 'Reverse auctions cannot be paid for via this endpoint.', 'wc_simple_auctions' ),
+                    array( 'status' => 400 )
+                );
+            }
+
+            $current_bider = absint( $product->get_auction_current_bider() );
+            if ( $current_bider !== $customer_id ) {
+                return new WP_Error(
+                    'auction_not_winner',
+                    sprintf(
+                        __( 'You are not the winning bidder for "%s".', 'wc_simple_auctions' ),
+                        $product->get_title()
+                    ),
+                    array( 'status' => 400 )
+                );
+            }
+        }
+
+        return null;
     }
 
     function new_delete_pending_order($request){

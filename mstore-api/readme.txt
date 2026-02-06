@@ -2,8 +2,8 @@
 Contributors:      inspireui
 Tags:              flutter, app builder, app creator, mobile app builder, woocommerce app
 Requires at least: 4.4
-Tested up to:      6.8.1
-Stable tag:        4.18.2
+Tested up to:      6.9.0
+Stable tag:        4.18.3
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,20 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 1. Click Install.
 
 == Changelog ==
+= 4.18.3 =
+  * fix: validate to checkout for auction product
+  * validate coupon discount before setting price_discount field
+  * Guard comment_arr before encoding comment field
+  * Support upload review images and respect status from app
+  * add missing review data in get_reviews [Listeo, MyListing]
+  * Add new get_user_posts endpoint to retrieve all blog statuses
+  * Enable images in blog categories
+  * Add missing field in store root
+  * Get countries with listings
+  * Support HPOS for delivery driver orders
+  * implement rental products
+  * implement split stripe and paypal for dokan
+
 = 4.18.2 =
   * fix: wrong store data as product return author if not has store
   * feat: add get_fees api for woocommerce
