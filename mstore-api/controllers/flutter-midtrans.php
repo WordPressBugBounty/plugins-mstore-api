@@ -19,7 +19,7 @@ class FlutterMidtrans extends FlutterBaseController
     protected $namespace = 'api/flutter_midtrans';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */

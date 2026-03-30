@@ -3,12 +3,12 @@ Contributors:      inspireui
 Tags:              flutter, app builder, app creator, mobile app builder, woocommerce app
 Requires at least: 4.4
 Tested up to:      6.9.0
-Stable tag:        4.18.3
+Stable tag:        4.18.4
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
 
 Take your WordPress store mobile with MStore API!
-This plugin bridges the gap between your WordPress website and the powerful FluxBuilder app builder. 
+This plugin bridges the gap between your WordPress website and the powerful FluxBuilder app builder.
 
 == Description ==
 Take your WordPress store mobile with MStore API!
@@ -30,9 +30,9 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 - Guide to use: [docs.fluxbuilder.com](https://docs.fluxbuilder.com)
 - Download The App Builder: [fluxbuilder.com/download](https://www.fluxbuilder.com/download)
 - Showcase: [https://showcase.fluxbuilder.com](https://showcase.fluxbuilder.com)
-- [Youtube](https://www.youtube.com/inspireui?sub_confirmation=1) 
-- [Facebook](https://www.facebook.com/groups/1401824449973438) 
-- [Document](https://docs.fluxbuilder.com) 
+- [YouTube](https://www.youtube.com/inspireui?sub_confirmation=1)
+- [Facebook](https://www.facebook.com/groups/1401824449973438)
+- [Document](https://docs.fluxbuilder.com)
 
 
 == Installation ==
@@ -48,6 +48,24 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 1. Click Install.
 
 == Changelog ==
+= 4.18.4 =
+  * Built-in support for WP REST API (Pure Taxonomies & REST API Controller plugins no longer required)
+  * Add support for ModemPay webhook
+  * Add support for Local Delivery Drivers for WooCommerce (Premium)
+  * Improve handling for special user cases
+  * Fix crash when bookings are loaded after an order is deleted
+  * Prevent conflicts when using include/exclude parameters
+  * Improve review submission and fix related issues
+  * Improve booking deletion process
+  * Simplify search configuration (FiboSearch)
+  * Fix incorrect alert shown when saving in admin
+  * Fix social login issues with special/non-ASCII characters
+  * Ensure nearby listings return full and accurate data (Listeo)
+  * Ensure user roles are preserved correctly during registration
+  * Fix ModemPay webhook issue that could cause parsing errors
+  * Improve compatibility with YITH Badge (regular version)
+  * Fix unsafe user meta updates in user profile update process
+
 = 4.18.3 =
   * fix: validate to checkout for auction product
   * validate coupon discount before setting price_discount field
@@ -108,7 +126,7 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 = 4.17.3 =
   * fix register security issue
   * Support get nearby listings by category and region
-  
+
 = 4.17.2 =
   * fix addons in webview
   * fix(HomeCache): not show min max price
@@ -177,10 +195,10 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 
 = 4.15.1 =
   * Support Tera Wallet Referrals
-  
+
 = 4.15.0 =
   * Remove api/flutter_user/firebase_sms_login and api/flutter_user/firebase_sms_login_v2 endpoint. They're replaced by api/flutter_user/firebase_sms and api/flutter_user/firebase_sms_login_v2
-  * Note: this version works on FluxStore v4.1.1 or later. If you're using the old FluxStore version, please doesn't upgrade MStore Api plugin v4.15.0 or later. 
+  * Note: this version works on FluxStore v4.1.1 or later. If you're using the old FluxStore version, please doesn't upgrade MStore Api plugin v4.15.0 or later.
 
 = 4.14.7 =
   * Fix firebase sms security
@@ -208,7 +226,7 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
   * Add size guide feature
 
 = 4.13.7 =
-  * Update plugin description 
+  * Update plugin description
 
 = 4.13.6 =
   * Fix to avatar that is uploaded on the app to website
@@ -313,7 +331,7 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 
 = 4.10.4 =
   * Support Flow Flow api
-  
+
 = 4.10.3 =
   * Fix register account for wholesale
 
@@ -344,7 +362,7 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 
 = 4.0.4 =
   * Support ExpressPay api
-  
+
 = 4.0.3 =
   * Fix search delivery boy api
 
@@ -389,7 +407,7 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 
 = 3.8.8 =
   * Fix shop orders api
-  
+
 = 3.8.7 =
   * Support Wholesale api
 
@@ -525,7 +543,7 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
   * Update to compatible with the latest WordPress 5.8
   * Rename files to upgrade Naming Convention.
   * Release the MStore API Postman Collection - https://www.getpostman.com/collections/8f9c088b0e5b82b90400
-  
+
 = 3.4.4 =
   * Support Tera Wallet
 
@@ -659,7 +677,7 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 
 = 3.0.6 =
   * Remove draft products in home cache api
-  
+
 = 3.0.5 =
   * Add endpoints for FluxStore admin (compatible with WCFM plugin)
   * Add endpoint for finding nearby stores based on user location (compatible with WCFM plugin)

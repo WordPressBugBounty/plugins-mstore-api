@@ -21,7 +21,7 @@ class FlutterVendor extends FlutterBaseController
     protected $namespace_v3 = 'wc/v3/flutter';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */

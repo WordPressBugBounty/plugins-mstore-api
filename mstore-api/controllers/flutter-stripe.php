@@ -27,7 +27,7 @@ class FlutterStripe extends FlutterBaseController
     protected $dokan_stripe_bootstrapped = false;
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */

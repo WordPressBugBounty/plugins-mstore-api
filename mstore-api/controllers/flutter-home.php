@@ -22,7 +22,7 @@ class FlutterHome extends WP_REST_Controller
     private $supportedLayouts = ["fourColumn","threeColumn","twoColumn","staggered","saleOff","card","listTile","largeCardHorizontalListItems","largeCard","simpleVerticalListItems","simpleList"];
     private $unSupportedVerticalLayouts = ["menu","menuCustom"];
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */

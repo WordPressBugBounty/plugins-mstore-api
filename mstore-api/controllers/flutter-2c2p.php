@@ -21,7 +21,7 @@ class Flutter2C2P extends FlutterBaseController
     protected $namespace = 'api/flutter_2c2p';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */

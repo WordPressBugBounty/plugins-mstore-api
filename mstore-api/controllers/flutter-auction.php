@@ -19,7 +19,7 @@ class FlutterAuction extends FlutterBaseController
     protected $namespace = 'api/flutter_auction';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */
@@ -94,6 +94,15 @@ class FlutterAuction extends FlutterBaseController
         $product_id = sanitize_text_field($params['product_id']); 
         $bid_value = sanitize_text_field($params['bid_value']); 
         
+        if (empty($product_id) || !is_numeric($product_id)) {
+            return parent::sendError("invalid_product", 'Product id is required', 400);
+        }
+
+        $product = wc_get_product($product_id);
+        if (!$product || 'trash' === get_post_status($product_id)) {
+            return parent::sendError("invalid_product", 'This product is no longer available.', 400);
+        }
+
         WC()->session->set( 'wc_notices', null );
         $bid = new WC_Bid();
         $result = $bid->placebid($product_id, $bid_value);

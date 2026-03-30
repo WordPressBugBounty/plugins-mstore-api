@@ -177,7 +177,7 @@ function sendNewOrderNotificationToDelivery($order_id, $status)
         }
     }
 
-    if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php')) {
+    if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('local-delivery-drivers-for-woocommerce-premium/local-delivery-drivers-for-woocommerce.php')) {
         $order = wc_get_order($order_id);
         $driver_id = $order->get_meta('lddfw_driverid');
         if ($driver_id) {
@@ -390,27 +390,50 @@ function addQRCodeUrlToMetaResponse($response){
     return $response;
 }
 
-function addYITHBadgeToMetaResponse($response, $product){
-    if (function_exists( 'yith_wcbm_get_product_badges' )) {
-       // Add badge to product.
-        $badges_to_show = yith_wcbm_get_product_badges( $product );
-        $badges_to_show = apply_filters( 'yith_wcbm_badges_to_show_on_product', $badges_to_show, $product );
+function addYITHBadgeToMetaResponse($response, $product)
+{
+    if (function_exists('yith_wcbm_get_product_badges') || function_exists('yith_wcbm_get_product_badge')) {
+        $product = wc_get_product($product);
+        if (!$product || !function_exists('yith_wcbm_get_badge_object')) {
+            return $response;
+        }
+
+        // Support both premium and regular versions of YITH Badge Management.
+        if (defined('YITH_WCBM_PREMIUM') && YITH_WCBM_PREMIUM && function_exists('yith_wcbm_get_product_badges')) {
+            $badges_to_show = yith_wcbm_get_product_badges($product);
+        } else {
+            $badges_to_show = function_exists('yith_wcbm_get_product_badge') ? yith_wcbm_get_product_badge($product->get_id()) : array();
+            if (!is_array($badges_to_show)) {
+                if (is_string($badges_to_show) && strpos($badges_to_show, ',') !== false) {
+                    $badges_to_show = explode(',', $badges_to_show);
+                } elseif (empty($badges_to_show)) {
+                    $badges_to_show = array();
+                } else {
+                    $badges_to_show = array($badges_to_show);
+                }
+            }
+            $badges_to_show = array_filter(array_map('absint', $badges_to_show));
+        }
+
+        $badges_to_show = apply_filters('yith_wcbm_badges_to_show_on_product', $badges_to_show, $product);
 
         $badges = array();
 
-        foreach ( $badges_to_show as $badge_id ) {
-            $badge_id = yith_wcbm_wpml_translate_badge_id( $badge_id );
-            $badge    = yith_wcbm_get_badge_object( $badge_id );
+        foreach ($badges_to_show as $badge_id) {
+            if (function_exists('yith_wcbm_wpml_translate_badge_id')) {
+                $badge_id = yith_wcbm_wpml_translate_badge_id($badge_id);
+            }
+            $badge    = yith_wcbm_get_badge_object($badge_id);
 
-            if ( $badge && $badge->is_enabled() ) {
+            if ($badge && (!method_exists($badge, 'is_enabled') || $badge->is_enabled())) {
                 $data = $badge->get_data();
                 // If badge is image, get image url.
-                if ( $badge->get_type() === 'image' ) {
+                if (method_exists($badge, 'get_type') && $badge->get_type() === 'image' && method_exists($badge, 'get_image_url')) {
                     $image_url = $badge->get_image_url();
                     if (strpos($image_url, 'http') == false) {
-                        $is_https = strpos(home_url(), 'https') == true ;
-                        $image_url = ($is_https ? 'https:' : 'http:').$image_url;
-                     }
+                        $is_https = strpos(home_url(), 'https') == true;
+                        $image_url = ($is_https ? 'https:' : 'http:') . $image_url;
+                    }
                     $data['image_url'] = $image_url;
                 }
                 $badges[] = $data;
@@ -419,12 +442,12 @@ function addYITHBadgeToMetaResponse($response, $product){
 
         $meta_data = $response->data['meta_data'];
         $meta_data[] = array(
-                'id'    => '_yith_wcbm_badges',
-                'key'   => '_yith_wcbm_badges',
-                'value' => $badges,
+            'id'    => '_yith_wcbm_badges',
+            'key'   => '_yith_wcbm_badges',
+            'value' => $badges,
         );
 
-        $hide_on_single = get_option( 'yith-wcbm-hide-on-single-product', 'no' ) === 'yes';
+        $hide_on_single = get_option('yith-wcbm-hide-on-single-product', 'no') === 'yes';
         $meta_data[] = array(
             'id'    => '_yith-wcbm-hide-on-single-product',
             'key'   => '_yith-wcbm-hide-on-single-product',
@@ -619,7 +642,7 @@ function customProductResponse($response, $object, $request)
             $response->data['meta_data'] = $meta_data;
         }
     }
-    
+
     // /* Product Add On */
     if(class_exists('WC_Product_Addons_Helper')){
         if(class_exists('WeDevs_Dokan') && dokan()->is_pro_exists()){
@@ -1225,14 +1248,14 @@ function customOrderResponse($response, $object, $request)
         $is_order_delivered = wcfm_is_order_delivered( $response->data['id'] );
         $response->data['delivery_status'] = $is_order_delivered ? 'delivered' : 'pending';
     }
-    
+
     // Remove duplicate "stores" field added by multi-vendor plugins
     if (isset($response->data['stores'])) {
         unset($response->data['stores']);
     }
-    
+
     // Update "store" field with full information from first product's store data
-    if (!empty($response->data['line_items']) && 
+    if (!empty($response->data['line_items']) &&
         isset($response->data['line_items'][0]['product_data']['store'])) {
         $response->data['store'] = $response->data['line_items'][0]['product_data']['store'];
     }

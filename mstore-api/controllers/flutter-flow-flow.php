@@ -19,7 +19,7 @@ class FlutterFlowFlow extends FlutterBaseController
     protected $namespace = 'api/flutter_flow_flow';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */

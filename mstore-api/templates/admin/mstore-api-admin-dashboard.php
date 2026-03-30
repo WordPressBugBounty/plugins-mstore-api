@@ -269,15 +269,17 @@ if (isset($verified) && $verified == "1") {
             <?php
             if (isset($_POST['but_submit'])) {
                 if(wp_verify_nonce($_POST['upload_file_nonce'], 'upload_file')){
-                    $errMsg = FlutterUtils::upload_file_by_admin($_FILES['fileToUpload']);
-                    if($errMsg != null){
-                        echo "<script type='text/javascript'>
-                        alert('You need to upload config_xx.json file');
-                        </script>";
-                    }else{
-                        echo "<script type='text/javascript'>
-                        location.reload();
-                          </script>";
+                    if(isset($_FILES['fileToUpload']) && $_FILES['fileToUpload']['size'] > 0){
+                        $errMsg = FlutterUtils::upload_file_by_admin($_FILES['fileToUpload']);
+                        if($errMsg != null){
+                            echo "<script type='text/javascript'>
+                            alert('You need to upload config_xx.json file');
+                            </script>";
+                        }else{
+                            echo "<script type='text/javascript'>
+                            location.reload();
+                              </script>";
+                        }
                     }
                 }else{
                     wp_send_json_error('No Permission',401);

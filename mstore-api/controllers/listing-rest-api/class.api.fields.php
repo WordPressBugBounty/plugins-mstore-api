@@ -555,8 +555,40 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 return true;
             }
         ));
+        register_rest_route('wp/v2', '/get-reviews-criteria', array(
+            'methods' => 'GET',
+            'callback' => array(
+                $this,
+                'get_reviews_criteria'
+            ),
+            'permission_callback' => function () {
+                return true;
+            }
+        ));
     }
 
+    public function get_reviews_criteria($request) {
+        if ($this->_isListeo) {
+            $criteria = [];
+            if (function_exists('listeo_get_reviews_criteria')) {
+                $criteria = listeo_get_reviews_criteria();
+            }
+
+            $results = [];
+            foreach ($criteria as $key => $value) {
+                $label = (is_array($value) && isset($value['label'])) ? $value['label'] : $value;
+                $tooltip = (is_array($value) && isset($value['tooltip'])) ? $value['tooltip'] : '';
+                $results[] = [
+                    'key' => $key,
+                    'label' => $label,
+                    'tooltip' => $tooltip,
+                ];
+            }
+            return $results;
+        }
+        // TODO: Implement for MyListing
+        return [];
+    }
 
     function get_dokan_orders($request)
     {
@@ -697,22 +729,35 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         global $wpdb;
         if($this->_isListeo){
 
-            $sql = "SELECT p.*, ";
+            $sql = "SELECT p.ID, ";
             $sql .= " (6371 * acos (cos (radians(%f)) * cos(radians(t.lat)) * cos(radians(t.lng) - radians(%f)) + ";
             $sql .= "sin (radians(%f)) * sin(radians(t.lat)))) AS distance FROM (SELECT b.post_id, a.post_status, sum(if(";
             $sql .= "meta_key = '_geolocation_lat', meta_value, 0)) AS lat, sum(if(meta_key = '_geolocation_long', ";
             $sql .= "meta_value, 0)) AS lng FROM {$wpdb->prefix}posts a, {$wpdb->prefix}postmeta b WHERE a.id = b.post_id AND (";
             $sql .= "b.meta_key='_geolocation_lat' OR b.meta_key='_geolocation_long') AND a.post_status='publish' GROUP BY b.post_id) AS t INNER ";
-            $sql .= "JOIN {$wpdb->prefix}posts as p on (p.ID=t.post_id) HAVING distance < %f";
+            $sql .= "JOIN {$wpdb->prefix}posts as p on (p.ID=t.post_id) HAVING distance < %f ORDER BY distance";
 
             $sql = $wpdb->prepare($sql, $current_lat, $current_long, $current_lat, $radius);
-            $posts = $wpdb->get_results($sql);
-            $items = (array)($posts);
-            // return $items;
-            foreach ($items as $item):
-                $itemdata = $this->prepare_item_for_response($item, $request);
-                $data[] = $this->prepare_response_for_collection($itemdata);
-            endforeach;
+
+            $results = $wpdb->get_results($sql);
+            $post_ids = array_map(function($item) { return $item->ID; }, $results);
+
+            if (!empty($post_ids)) {
+                $controller = new WP_REST_Posts_Controller('listing');
+                $query = new WP_Query(array(
+                    'post_type' => 'listing',
+                    'post__in' => $post_ids,
+                    'orderby' => 'post__in',
+                    'posts_per_page' => -1,
+                    'post_status' => 'publish'
+                ));
+
+                foreach ($query->posts as $post) {
+                    $itemdata = $controller->prepare_item_for_response($post, $request);
+                    $data[] = $controller->prepare_response_for_collection($itemdata);
+                }
+                wp_reset_postdata();
+            }
         }
         if( $this->_isMyListing){
             $listing_type = $request['listing_type'] ?? '';
@@ -771,21 +816,6 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 $itemdata = $this->prepare_item_for_response($item, $request);
                 $data[] = $this->prepare_response_for_collection($itemdata);
             endforeach;
-
-            // $sql = "SELECT p.*, ";
-            // $sql .= " (6371 * acos (cos (radians($current_lat)) * cos(radians(t.lat)) * cos(radians(t.lng) - radians($current_long)) + ";
-            // $sql .= "sin (radians($current_lat)) * sin(radians(t.lat)))) AS distance FROM (SELECT b.post_id, a.post_status, sum(if(";
-            // $sql .= "meta_key = 'geolocation_lat', meta_value, 0)) AS lat, sum(if(meta_key = 'geolocation_long', ";
-            // $sql .= "meta_value, 0)) AS lng FROM {$wpdb->prefix}posts a, {$wpdb->prefix}postmeta b WHERE a.id = b.post_id AND (";
-            // $sql .= "b.meta_key='geolocation_lat' OR b.meta_key='geolocation_long') AND a.post_status='publish' GROUP BY b.post_id) AS t INNER ";
-            // $sql .= "JOIN {$wpdb->prefix}posts as p on (p.ID=t.post_id) HAVING distance < {$radius}";
-            // $posts = $wpdb->get_results($sql);
-            // $items = (array)($posts);
-            // // return $items;
-            // foreach ($items as $item):
-            //     $itemdata = $this->prepare_item_for_response($item, $request);
-            //     $data[] = $this->prepare_response_for_collection($itemdata);
-            // endforeach;
         }
         if($this->_isListingPro){
             $args = array(
@@ -1513,8 +1543,10 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             {
                 $order_id = $booking['order_id'];
                 $order = wc_get_order($order_id);
-                $order_data = $order->get_data();
-                $item['order_status'] = $order_data['status'];
+                if ($order) {
+                    $order_data = $order->get_data();
+                    $item['order_status'] = $order_data['status'];
+                }
             }
             $post_id = $booking['listing_id'];
             $listing_type = get_post_meta($post_id, '_listing_type', true);
@@ -1741,11 +1773,6 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
         if (!$booking) {
             return new WP_Error('booking_not_found', 'Booking not found', array('status' => 404));
-        }
-
-        // Only allow deletion of expired bookings
-        if ($booking['status'] !== 'expired') {
-            return new WP_Error('invalid_status', 'Only expired bookings can be deleted', array('status' => 400));
         }
 
         // Delete the booking
@@ -2695,6 +2722,29 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     $author_avatar = get_avatar_url($item->comment_author_email);
                 }
 
+                $detailed_ratings = [];
+                if ($this->_isListeo) {
+                    $criteria = [];
+                    if (function_exists('listeo_get_reviews_criteria')) {
+                        $criteria = listeo_get_reviews_criteria();
+                    }
+                    foreach ($criteria as $key => $value) {
+                        $label = (is_array($value) && isset($value['label'])) ? $value['label'] : $value;
+                        $tooltip = (is_array($value) && isset($value['tooltip'])) ? $value['tooltip'] : '';
+                        $rating_val = get_comment_meta($item->comment_ID, $key, true);
+                        if ($rating_val !== '') {
+                            $detailed_ratings[] = [
+                                'key' => $key,
+                                'label' => $label,
+                                'tooltip' => $tooltip,
+                                'rating' => $rating_val
+                            ];
+                        }
+                    }
+                } elseif ($this->_isMyListing) {
+                    // TODO: Implement for MyListing
+                }
+
                 $results[] = [
                     "id" => $item->comment_ID,
                     "rating" => $countRating,
@@ -2704,7 +2754,8 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     "content" => $item->comment_content,
                     "author_email" => $item->comment_author_email,
                     "author_avatar" => $author_avatar,
-                    "gallery_images" => $gallery_images
+                    "gallery_images" => $gallery_images,
+                    "detailed_ratings" => $detailed_ratings
                 ];
             }
             return $results;
@@ -2770,7 +2821,9 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     }
                     wp_set_current_user( $user_id );
                 }
-                $comment = wp_handle_comment_submission( wp_unslash( $_POST ) );
+                $params = $request->get_params();
+                $_POST = array_merge($_POST, $params);
+                $comment = wp_handle_comment_submission( $params );
 
                 // Override comment status if needed
                 // Respect status from mobile app
@@ -2815,7 +2868,9 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                                 }
                             }
                             if (!empty($attachment_ids)) {
-                                update_comment_meta($comment->comment_ID, 'listeo-attachment-id', implode(',', $attachment_ids));
+                                foreach ($attachment_ids as $att_id) {
+                                    add_comment_meta($comment->comment_ID, 'listeo-attachment-id', $att_id);
+                                }
                             }
                         } elseif ($this->_isMyListing) {
                             update_comment_meta($comment->comment_ID, '_case27_review_images', $uploaded_images);

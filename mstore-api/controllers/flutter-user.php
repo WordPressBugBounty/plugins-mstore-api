@@ -5,6 +5,30 @@ require_once(__DIR__ . '/helpers/facebook-jwt-helper.php');
 
 class FlutterUserController extends FlutterBaseController
 {
+    private $allowed_profile_meta_keys = array(
+        'billing_first_name',
+        'billing_last_name',
+        'billing_company',
+        'billing_address_1',
+        'billing_address_2',
+        'billing_city',
+        'billing_state',
+        'billing_postcode',
+        'billing_country',
+        'billing_email',
+        'billing_phone',
+        'shipping_first_name',
+        'shipping_last_name',
+        'shipping_company',
+        'shipping_address_1',
+        'shipping_address_2',
+        'shipping_city',
+        'shipping_state',
+        'shipping_postcode',
+        'shipping_country',
+        'shipping_email',
+        'shipping_phone',
+    );
 
     /**
      * Endpoint namespace
@@ -13,8 +37,66 @@ class FlutterUserController extends FlutterBaseController
      */
     protected $namespace = 'api/flutter_user';
 
-    public function __construct()
+    public function __construct() {}
+
+    private function sanitize_profile_text($value)
     {
+        if (is_scalar($value)) {
+            return sanitize_text_field(wp_unslash((string)$value));
+        }
+
+        return '';
+    }
+
+    private function sanitize_profile_meta_value($meta_key, $value)
+    {
+        if (!is_scalar($value)) {
+            return '';
+        }
+
+        $value = wp_unslash((string)$value);
+
+        switch ($meta_key) {
+            case 'billing_email':
+            case 'shipping_email':
+                return sanitize_email($value);
+            case 'billing_postcode':
+            case 'shipping_postcode':
+                return wc_clean($value);
+            default:
+                return sanitize_text_field($value);
+        }
+    }
+
+    private function sanitize_meta_data($meta_data)
+    {
+        $sanitized_meta_data = array();
+
+        if (!is_array($meta_data)) {
+            return $sanitized_meta_data;
+        }
+
+        foreach ($meta_data as $item) {
+            if (!is_object($item) && !is_array($item)) {
+                continue;
+            }
+
+            $key = is_array($item) ? ($item['key'] ?? null) : ($item->key ?? null);
+            $value = is_array($item) ? ($item['value'] ?? null) : ($item->value ?? null);
+
+            if (!is_string($key) || !in_array($key, $this->allowed_profile_meta_keys, true)) {
+                continue;
+            }
+
+            if (!is_scalar($value)) {
+                continue;
+            }
+
+            $sanitized_value = $this->sanitize_profile_meta_value($key, $value);
+            $sanitized_meta_data[$key] = $sanitized_value;
+        }
+
+        return $sanitized_meta_data;
     }
 
     public function register_routes()
@@ -343,7 +425,6 @@ class FlutterUserController extends FlutterBaseController
         $params = json_decode($json, TRUE);
         $usernameReq = $params["user_login"];
 
-        $errors = new WP_Error();
         if (empty($usernameReq) || !is_string($usernameReq)) {
             return parent::sendError("empty_username", "Enter a username or email address.", 400);
         } elseif (strpos($usernameReq, '@')) {
@@ -407,9 +488,9 @@ class FlutterUserController extends FlutterBaseController
             $referralCodeReq = $params["referral_code"];
         }
 
-        if(isset($params['wcfm_membership_application_status'])){
-			$wcfm_membership_application_status = $params['wcfm_membership_application_status'];
-		}
+        if (isset($params['wcfm_membership_application_status'])) {
+            $wcfm_membership_application_status = $params['wcfm_membership_application_status'];
+        }
 
         $username = sanitize_user($usernameReq);
         $email = sanitize_email($emailReq);
@@ -445,12 +526,29 @@ class FlutterUserController extends FlutterBaseController
                 return parent::sendError("existed_email", "E-mail address is already in use.", 400);
             } else {
                 if (!$userPassReq) {
-                    $params->user_pass = wp_generate_password();
+                    $params['user_pass'] = wp_generate_password();
                 }
 
-                $allowed_params = array('user_login', 'user_email', 'user_pass', 'display_name', 'user_nicename', 'user_url', 'nickname', 'first_name',
-                    'last_name', 'description', 'rich_editing', 'user_registered', 'role', 'jabber', 'aim', 'yim',
-                    'comment_shortcuts', 'admin_color', 'use_ssl', 'show_admin_bar_front',
+                $allowed_params = array(
+                    'user_login',
+                    'user_email',
+                    'user_pass',
+                    'display_name',
+                    'user_url',
+                    'nickname',
+                    'first_name',
+                    'last_name',
+                    'description',
+                    'rich_editing',
+                    'user_registered',
+                    'role',
+                    'jabber',
+                    'aim',
+                    'yim',
+                    'comment_shortcuts',
+                    'admin_color',
+                    'use_ssl',
+                    'show_admin_bar_front',
                 );
 
                 $dataRequest = $params;
@@ -473,34 +571,41 @@ class FlutterUserController extends FlutterBaseController
                 }
                 $_POST['user_role'] = $user['role']; //fix to register account with role in listeo
 
-                //
                 if (isset($referralCodeReq) && $referralCodeReq) {
-                    $_COOKIE['woo_wallet_referral'] = sanitize_text_field( wp_unslash( $referralCodeReq ) );
+                    $_COOKIE['woo_wallet_referral'] = sanitize_text_field(wp_unslash($referralCodeReq));
                 }
 
                 $user_id = wp_insert_user($user);
 
                 if (is_wp_error($user_id)) {
                     return parent::sendError($user_id->get_error_code(), $user_id->get_error_message(), 400);
-                } elseif (isset($params["phone"])) {
-                    update_user_meta($user_id, 'billing_phone', $params["phone"]);
-                    update_user_meta($user_id, 'registered_phone_number', $params["phone"]);
+                } else {
+                    // Reapply role to override WooCommerce's automatic assignment
+                    if (isset($user['role']) && !empty($user['role'])) {
+                        $wp_user = new WP_User($user_id);
+                        $wp_user->set_role($user['role']);
+                    }
+
+                    if (isset($params["phone"])) {
+                        update_user_meta($user_id, 'billing_phone', $params["phone"]);
+                        update_user_meta($user_id, 'registered_phone_number', $params["phone"]);
+                    }
                 }
             }
         }
         wp_new_user_notification($user_id, null, 'both');
-        if(isset( $wcfm_membership_application_status) &&  $wcfm_membership_application_status == 'pending'){
-            update_user_meta($user_id,'store_name', $user['display_name']);
+        if (isset($wcfm_membership_application_status) &&  $wcfm_membership_application_status == 'pending') {
+            update_user_meta($user_id, 'store_name', $user['display_name']);
 
             //fix crash when approve membership in WCFM
-            $wcfmvm_static_infos = (array) get_user_meta( $member_id, 'wcfmvm_static_infos', true );
+            $wcfmvm_static_infos = (array) get_user_meta($user_id, 'wcfmvm_static_infos', true);
             $wcfmvm_static_infos['phone'] = $params["phone"] ?? '';
             update_user_meta($user_id, 'wcfmvm_static_infos', $wcfmvm_static_infos);
             update_user_meta($user_id, 'billing_phone', $params["phone"] ?? '');
 
-            update_user_meta($user_id,'temp_wcfm_membership', true);
+            update_user_meta($user_id, 'temp_wcfm_membership', true);
             global $WCFMvm;
-            $WCFMvm->send_approval_reminder_admin( $user_id );
+            $WCFMvm->send_approval_reminder_admin($user_id);
         }
 
         if (isset($params['dokan_enable_selling'])) {
@@ -572,15 +677,15 @@ class FlutterUserController extends FlutterBaseController
         }
         $is_driver_available = false;
 
-        if(is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php')){
+        if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('local-delivery-drivers-for-woocommerce-premium/local-delivery-drivers-for-woocommerce.php')) {
             $is_driver_available = get_user_meta($user->ID, 'lddfw_driver_availability', true);
-        }
-        else if(is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') ||
-                is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')){
+        } else if (
+            is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') ||
+            is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')
+        ) {
             $is_driver_available = get_user_meta($user->ID, 'ddwc_driver_availability', true);
-        }
-        else{
-            $is_driver_available = in_array('administrator',$user->roles) || in_array('wcfm_delivery_boy',$user->roles);
+        } else {
+            $is_driver_available = in_array('administrator', $user->roles) || in_array('wcfm_delivery_boy', $user->roles);
         }
 
         // Check order status change capability
@@ -612,7 +717,7 @@ class FlutterUserController extends FlutterBaseController
             "url" => $user->user_url,
             "registered" => $user->user_registered,
             "displayname" => $user->display_name,
-            "firstname" => $user->user_firstname,
+            "firstname" => $user->first_name,
             "lastname" => $user->last_name,
             "nickname" => $user->nickname,
             "description" => $user->user_description,
@@ -659,17 +764,27 @@ class FlutterUserController extends FlutterBaseController
         );
     }
 
-    function createSocialAccount($email, $name, $firstName, $lastName, $userName)
+    function createSocialAccount($email, $name, $firstName, $lastName)
     {
         $email_exists = email_exists($email);
         if ($email_exists) {
             $user = get_user_by('email', $email);
             $user_id = $user->ID;
         } else {
+            // Extract and sanitize the username from the email local part
+            $userName = sanitize_user(explode('@', $email)[0], true);
+
+            // Fall back to a random name if the local part had no valid characters
+            if (empty($userName)) {
+                $userName = 'user_' . time() . '_' . wp_rand(1000, 9999);
+            }
+
+            // Append an incrementing counter to guarantee uniqueness
+            $baseUserName = $userName;
             $i = 0;
             while (username_exists($userName)) {
                 $i++;
-                $userName = strtolower($userName) . '.' . $i;
+                $userName = $baseUserName . '.' . $i;
             }
             $random_password = wp_generate_password($length = 12, $include_standard_special_chars = false);
             $userdata = array(
@@ -678,8 +793,12 @@ class FlutterUserController extends FlutterBaseController
                 'user_pass' => $random_password,
                 'display_name' => $name,
                 'first_name' => $firstName,
-                'last_name' => $lastName);
+                'last_name' => $lastName
+            );
             $user_id = wp_insert_user($userdata);
+            if (is_wp_error($user_id)) {
+                return $user_id;
+            }
         }
 
         $cookie = generateCookieByUserId($user_id);
@@ -695,7 +814,6 @@ class FlutterUserController extends FlutterBaseController
     public function fb_connect($request)
     {
         $fields = 'id,name,first_name,last_name,email';
-        $enable_ssl = true;
         $access_token = $request["access_token"];
         if (!isset($access_token)) {
             return parent::sendError("invalid_login", "You must include a 'access_token' variable. Get the valid access_token for this app from Facebook API.", 400);
@@ -720,8 +838,7 @@ class FlutterUserController extends FlutterBaseController
         }
 
         if (isset($result["email"])) {
-            $user_name = strtolower($result['first_name'] . '.' . $result['last_name']);
-            return $this->createSocialAccount($result["email"], $result['name'], $result['first_name'], $result['last_name'], $user_name);
+            return $this->createSocialAccount($result["email"], $result['name'], $result['first_name'], $result['last_name']);
         } else {
             return parent::sendError("invalid_login", "Your 'access_token' did not return email of the user. Without 'email' user can't be logged in or registered. Get user email extended permission while joining the Facebook app.", 400);
         }
@@ -752,12 +869,10 @@ class FlutterUserController extends FlutterBaseController
         if (isset($result["phone"])) {
             $user_name = $result["phone"]["number"];
             $user_email = $result["phone"]["number"] . "@flutter.io";
-            return $this->createSocialAccount($user_email, $user_name, $user_name, "", $user_name);
+            return $this->createSocialAccount($user_email, $user_name, $user_name, "");
         } else {
             return parent::sendError("invalid_login", "Your 'access_token' did not return email of the user. Without 'email' user can't be logged in or registered. Get user email extended permission while joining the Facebook app.", 400);
         }
-        return $response;
-
     }
 
     private function firebase_sms_verify_id_token($request)
@@ -793,7 +908,7 @@ class FlutterUserController extends FlutterBaseController
         }
         $user_name = $phone;
         $user_email = $phone . "@" . $domain;
-        return $this->createSocialAccount($user_email, $user_name, $user_name, "", $user_name);
+        return $this->createSocialAccount($user_email, $user_name, $user_name, "");
     }
 
     private function firebase_sms_login_v2($phone)
@@ -802,31 +917,18 @@ class FlutterUserController extends FlutterBaseController
             return parent::sendError("invalid_login", "You must include a 'phone' variable.", 400);
         }
 
-        if (isset($phone)) {
-            $args = array('meta_key' => 'registered_phone_number', 'meta_value' => $phone);
-            $search_users = get_users($args);
-            if (empty($search_users)) {
-                $domain = $_SERVER['SERVER_NAME'] == 'default_server' ? $_SERVER['HTTP_HOST'] : $_SERVER['SERVER_NAME'];
-                if (count(explode(".", $domain)) == 1) {
-                    $domain = "flutter.io";
-                }
-                $user_name = $phone;
-                $user_email = $phone . "@" . $domain;
-                $user = get_user_by('email', $user_email);
-                if (!$user) {
-                    return parent::sendError("invalid_login", "User does not exist", 400);
-                }
-                $cookie = generateCookieByUserId($user->ID);
-                $response['wp_user_id'] = $user->ID;
-                $response['cookie'] = $cookie;
-                $response['user_login'] = $user->user_login;
-                $response['user'] = $this->getResponseUserInfo($user);
-                return $response;
+        $args = array('meta_key' => 'registered_phone_number', 'meta_value' => $phone);
+        $search_users = get_users($args);
+        if (empty($search_users)) {
+            $domain = $_SERVER['SERVER_NAME'] == 'default_server' ? $_SERVER['HTTP_HOST'] : $_SERVER['SERVER_NAME'];
+            if (count(explode(".", $domain)) == 1) {
+                $domain = "flutter.io";
             }
-            if (count($search_users) > 1) {
-                return parent::sendError("invalid_login", "Too many users with the same phone number", 400);
+            $user_email = $phone . "@" . $domain;
+            $user = get_user_by('email', $user_email);
+            if (!$user) {
+                return parent::sendError("invalid_login", "User does not exist", 400);
             }
-            $user = $search_users[0];
             $cookie = generateCookieByUserId($user->ID);
             $response['wp_user_id'] = $user->ID;
             $response['cookie'] = $cookie;
@@ -834,7 +936,16 @@ class FlutterUserController extends FlutterBaseController
             $response['user'] = $this->getResponseUserInfo($user);
             return $response;
         }
-        return parent::sendError("invalid_login", "Unknown Error", 400);
+        if (count($search_users) > 1) {
+            return parent::sendError("invalid_login", "Too many users with the same phone number", 400);
+        }
+        $user = $search_users[0];
+        $cookie = generateCookieByUserId($user->ID);
+        $response['wp_user_id'] = $user->ID;
+        $response['cookie'] = $cookie;
+        $response['user_login'] = $user->user_login;
+        $response['user'] = $this->getResponseUserInfo($user);
+        return $response;
     }
 
 
@@ -855,11 +966,11 @@ class FlutterUserController extends FlutterBaseController
         $lastName = $params["last_name"];
         $teamId = $params["team_id"];
         $bundleId = $params["bundle_id"];
-        if(!FlutterAppleSignInUtils::is_file_existed()){
+        if (!FlutterAppleSignInUtils::is_file_existed()) {
             return parent::sendError("invalid_login", "You need to upload AuthKey_XXXX.p8 file to MStore Api plugin", 400);
         }
-        $token = AppleSignInHelper::generate_token($bundleId,$teamId,$authorization_code);
-        if($token == false || is_wp_error($token)){
+        $token = AppleSignInHelper::generate_token($bundleId, $teamId, $authorization_code);
+        if ($token == false || is_wp_error($token)) {
             return is_wp_error($token) ? $token : parent::sendError("invalid_login",  "Invalid authorization_code", 400);
         }
         $decoded = $this->jwtDecode($token);
@@ -868,15 +979,14 @@ class FlutterUserController extends FlutterBaseController
             return parent::sendError("invalid_login", "Can't get the email to create account.", 400);
         }
         $display_name = explode("@", $user_email)[0];
-        if(isset($firstName) && isset($lastName) && !empty($firstName)){
-            $display_name = $firstName.' '.$lastName;
-        }else{
+        if (isset($firstName) && isset($lastName) && !empty($firstName)) {
+            $display_name = $firstName . ' ' . $lastName;
+        } else {
             $firstName =  $display_name;
             $lastName = "";
         }
-        $user_name = $display_name;
 
-        return $this->createSocialAccount($user_email, $display_name, $firstName, $lastName, $user_name);
+        return $this->createSocialAccount($user_email, $display_name, $firstName, $lastName);
     }
 
     public function google_login($request)
@@ -896,8 +1006,7 @@ class FlutterUserController extends FlutterBaseController
             $lastName = $result["family_name"];
             $email = $result["email"];
             $display_name = $firstName . " " . $lastName;
-            $user_name = $firstName . "." . $lastName;
-            return $this->createSocialAccount($email, $display_name, $firstName, $lastName, $user_name);
+            return $this->createSocialAccount($email, $display_name, $firstName, $lastName);
         } else {
             return parent::sendError("invalid_login", "Your 'token' did not return email of the user. Without 'email' user can't be logged in or registered. Get user email extended permission while joining the Google app.", 400);
         }
@@ -1011,6 +1120,12 @@ class FlutterUserController extends FlutterBaseController
         global $json_api;
         $json = file_get_contents('php://input');
         $params = json_decode($json);
+        if (!is_object($params)) {
+            return new WP_Error("invalid_request", "Invalid request payload.", array('status' => 400));
+        }
+        if (!isset($params->cookie) || !is_string($params->cookie) || '' === trim($params->cookie)) {
+            return new WP_Error("invalid_cookie", "Missing or invalid cookie parameter.", array('status' => 400));
+        }
         $cookie = $params->cookie;
         $user_id = validateCookieLogin($cookie);
         if (is_wp_error($user_id)) {
@@ -1018,100 +1133,144 @@ class FlutterUserController extends FlutterBaseController
         }
 
         $user_update = array('ID' => $user_id);
+        $pending_meta_updates = array();
+        $pending_avatar = null;
         if (isset($params->user_pass)) {
             $user_update['user_pass'] = $params->user_pass;
         }
         if (isset($params->user_nicename)) {
-            $user_update['user_nicename'] = $params->user_nicename;
-        }
-        if (isset($params->user_email)) {
-            $user_update['user_email'] = $params->user_email;
-        }
-        if (isset($params->user_url)) {
-            $user_update['user_url'] = $params->user_url;
-        }
-        if (isset($params->display_name)) {
-            $user_update['display_name'] = $params->display_name;
-        }
-        if (isset($params->first_name)) {
-            $user_update['first_name'] = $params->first_name;
-            update_user_meta($user_id, 'shipping_first_name', $params->first_name, '');
-            update_user_meta($user_id, 'billing_first_name', $params->first_name, '');
-        }
-        if (isset($params->last_name)) {
-            $user_update['last_name'] = $params->last_name;
-            update_user_meta($user_id, 'shipping_last_name', $params->last_name, '');
-            update_user_meta($user_id, 'billing_last_name', $params->last_name, '');
-        }
-        if (isset($params->phone)) {
-            update_user_meta($user_id, 'shipping_phone', $params->phone, '');
-            update_user_meta($user_id, 'billing_phone', $params->phone, '');
-        }
-        if (isset($params->shipping_company)) {
-            update_user_meta($user_id, 'shipping_company', $params->shipping_company, '');
-            update_user_meta($user_id, 'billing_company', $params->shipping_company, '');
-        }
-        if (isset($params->shipping_state)) {
-            update_user_meta($user_id, 'shipping_state', $params->shipping_state, '');
-            update_user_meta($user_id, 'billing_state', $params->shipping_state, '');
-        }
-        if (isset($params->shipping_address_1)) {
-            update_user_meta($user_id, 'shipping_address_1', $params->shipping_address_1, '');
-            update_user_meta($user_id, 'billing_address_1', $params->shipping_address_1, '');
-        }
-        if (isset($params->shipping_address_2)) {
-            update_user_meta($user_id, 'shipping_address_2', $params->shipping_address_2, '');
-            update_user_meta($user_id, 'billing_address_2', $params->shipping_address_2, '');
-        }
-        if (isset($params->shipping_city)) {
-            update_user_meta($user_id, 'shipping_city', $params->shipping_city, '');
-            update_user_meta($user_id, 'billing_city', $params->shipping_city, '');
-        }
-        if (isset($params->shipping_country)) {
-            update_user_meta($user_id, 'shipping_country', $params->shipping_country, '');
-            update_user_meta($user_id, 'billing_country', $params->shipping_country, '');
-        }
-        if (isset($params->shipping_postcode)) {
-            update_user_meta($user_id, 'shipping_postcode', $params->shipping_postcode, '');
-            update_user_meta($user_id, 'billing_postcode', $params->shipping_postcode, '');
-        }
-        if (isset($params->meta_data) && is_array($params->meta_data)) {
-            foreach ($params->meta_data as $item) {
-                update_user_meta($user_id, $item->key, $item->value, '');
+            if (!is_scalar($params->user_nicename)) {
+                return new WP_Error("invalid_user_nicename", "Invalid user nicename.", array('status' => 400));
+
             }
+            $user_update['user_nicename'] = sanitize_title((string) $params->user_nicename);
         }
 
-        if (isset($params->avatar)) {
-            $count = 1;
-            try {
-                $attachment_id = upload_image_from_mobile($params->avatar, $count, $user_id);
-                $url = wp_get_attachment_image_src($attachment_id);
-                update_user_meta($user_id, 'user_avatar', $url, '');
-             } catch (Exception $e) {
-                return new WP_Error("invalid_avatar", $e->getMessage(), array('status' => 400));
+        if (isset($params->user_email)) {
+            if (!is_scalar($params->user_email)) {
+                return new WP_Error("invalid_user_email", "Invalid email address.", array('status' => 400));
             }
+
+            $user_email = sanitize_email((string) $params->user_email);
+            if ($user_email === '' || !is_email($user_email)) {
+                return new WP_Error("invalid_user_email", "Invalid email address.", array('status' => 400));
+            }
+            $user_update['user_email'] = $user_email;
+        }
+
+        if (isset($params->user_url)) {
+            if (!is_scalar($params->user_url)) {
+                return new WP_Error("invalid_user_url", "Invalid user URL.", array('status' => 400));
+            }
+
+            $raw_user_url = (string) $params->user_url;
+            $user_url = esc_url_raw($raw_user_url);
+            if ($raw_user_url !== '' && $user_url === '') {
+                return new WP_Error("invalid_user_url", "Invalid user URL.", array('status' => 400));
+            }
+
+            $user_update['user_url'] = $user_url;
+        }
+        if (isset($params->display_name)) {
+            $user_update['display_name'] = $this->sanitize_profile_text($params->display_name);
+        }
+        if (isset($params->first_name)) {
+            $first_name = $this->sanitize_profile_text($params->first_name);
+            $user_update['first_name'] = $first_name;
+            $pending_meta_updates['shipping_first_name'] = $first_name;
+            $pending_meta_updates['billing_first_name'] = $first_name;
+        }
+        if (isset($params->last_name)) {
+            $last_name = $this->sanitize_profile_text($params->last_name);
+            $user_update['last_name'] = $last_name;
+            $pending_meta_updates['shipping_last_name'] = $last_name;
+            $pending_meta_updates['billing_last_name'] = $last_name;
+        }
+        if (isset($params->phone)) {
+            $phone = $this->sanitize_profile_text($params->phone);
+            $pending_meta_updates['shipping_phone'] = $phone;
+            $pending_meta_updates['billing_phone'] = $phone;
+        }
+        if (isset($params->shipping_company)) {
+            $shipping_company = $this->sanitize_profile_text($params->shipping_company);
+            $pending_meta_updates['shipping_company'] = $shipping_company;
+            $pending_meta_updates['billing_company'] = $shipping_company;
+        }
+        if (isset($params->shipping_state)) {
+            $shipping_state = $this->sanitize_profile_text($params->shipping_state);
+            $pending_meta_updates['shipping_state'] = $shipping_state;
+            $pending_meta_updates['billing_state'] = $shipping_state;
+        }
+        if (isset($params->shipping_address_1)) {
+            $shipping_address_1 = $this->sanitize_profile_text($params->shipping_address_1);
+            $pending_meta_updates['shipping_address_1'] = $shipping_address_1;
+            $pending_meta_updates['billing_address_1'] = $shipping_address_1;
+        }
+        if (isset($params->shipping_address_2)) {
+            $shipping_address_2 = $this->sanitize_profile_text($params->shipping_address_2);
+            $pending_meta_updates['shipping_address_2'] = $shipping_address_2;
+            $pending_meta_updates['billing_address_2'] = $shipping_address_2;
+        }
+        if (isset($params->shipping_city)) {
+            $shipping_city = $this->sanitize_profile_text($params->shipping_city);
+            $pending_meta_updates['shipping_city'] = $shipping_city;
+            $pending_meta_updates['billing_city'] = $shipping_city;
+        }
+        if (isset($params->shipping_country)) {
+            $shipping_country = $this->sanitize_profile_text($params->shipping_country);
+            $pending_meta_updates['shipping_country'] = $shipping_country;
+            $pending_meta_updates['billing_country'] = $shipping_country;
+        }
+        if (isset($params->shipping_postcode)) {
+            $shipping_postcode = wc_clean(wp_unslash((string)$params->shipping_postcode));
+            $pending_meta_updates['shipping_postcode'] = $shipping_postcode;
+            $pending_meta_updates['billing_postcode'] = $shipping_postcode;
+        }
+        $pending_meta_updates = array_merge(
+            $pending_meta_updates,
+            $this->sanitize_meta_data($params->meta_data ?? null)
+        );
+
+        if (isset($params->avatar)) {
+            $pending_avatar = $params->avatar;
         }
 
 
         $user_data = wp_update_user($user_update);
 
         if (is_wp_error($user_data)) {
-            // There was an error; possibly this user doesn't exist.
-            echo 'Error.';
+            return $user_data;
         }
+
+        foreach ($pending_meta_updates as $meta_key => $meta_value) {
+            update_user_meta($user_id, $meta_key, $meta_value, '');
+        }
+
+        if ($pending_avatar !== null) {
+            $count = 1;
+            try {
+                $attachment_id = upload_image_from_mobile($pending_avatar, $count, $user_id);
+                $url = wp_get_attachment_image_src($attachment_id);
+                update_user_meta($user_id, 'user_avatar', $url, '');
+            } catch (Exception $e) {
+                return new WP_Error("invalid_avatar", $e->getMessage(), array('status' => 400));
+            }
+        }
+
         $user = get_userdata($user_id);
 
         if (isset($params->deviceToken)) {
+            $device_token = $this->sanitize_profile_text($params->deviceToken);
             if (isset($params->is_manager) && $params->is_manager) {
-                update_user_meta($user_id, "mstore_manager_device_token", $params->deviceToken);
+                update_user_meta($user_id, "mstore_manager_device_token", $device_token);
             } else if (isset($params->is_delivery) && $params->is_delivery) {
-                update_user_meta($user_id, "mstore_delivery_device_token", $params->deviceToken);
+                update_user_meta($user_id, "mstore_delivery_device_token", $device_token);
             }
             if (!isset($params->is_delivery) && !isset($params->is_manager)) {
-                update_user_meta($user_id, "mstore_device_token", $params->deviceToken);
+                update_user_meta($user_id, "mstore_device_token", $device_token);
             }
-            if(in_array('wcfm_delivery_boy', (array)$user->roles) || in_array('driver',(array)$user->roles)){
-                update_user_meta($user_id, "mstore_delivery_device_token", $params->deviceToken);
+            if (in_array('wcfm_delivery_boy', (array)$user->roles) || in_array('driver', (array)$user->roles)) {
+                update_user_meta($user_id, "mstore_delivery_device_token", $device_token);
             }
         }
 
@@ -1131,7 +1290,9 @@ class FlutterUserController extends FlutterBaseController
         $table_name = $wpdb->prefix . "mstore_checkout";
 
         $code = md5(mt_rand() . strtotime("now"));
-        $success = $wpdb->insert($table_name, array(
+        $success = $wpdb->insert(
+            $table_name,
+            array(
                 'code' => $code,
                 'order' => $order
             )
@@ -1210,7 +1371,7 @@ class FlutterUserController extends FlutterBaseController
         $message = $params['message'];
 
         pushNotificationForUser($receiver->ID, $sender_name, $message);
-        if (!is_plugin_active('onesignal-free-web-push-notifications/onesignal.php')) {//fix duplicate notification if onesignal
+        if (!is_plugin_active('onesignal-free-web-push-notifications/onesignal.php')) { //fix duplicate notification if onesignal
             pushNotificationForVendor($receiver->ID, $sender_name, $message);
         }
     }
@@ -1238,7 +1399,7 @@ class FlutterUserController extends FlutterBaseController
             } else if ($type == 'update') {
                 $_REQUEST['login'] = 11;
             }
-        }else{
+        } else {
             $_REQUEST['login'] = 2;
         }
 
@@ -1275,7 +1436,7 @@ class FlutterUserController extends FlutterBaseController
 
         if (isset($params['password'])) {
             $_POST['digits_reg_password'] = $params['password'];
-        }else{
+        } else {
             $_POST['digits_reg_password'] = wp_generate_password();
         }
 
@@ -1283,52 +1444,51 @@ class FlutterUserController extends FlutterBaseController
         $reg_custom_fields = json_decode($reg_custom_fields, true);
         foreach ($reg_custom_fields as $key => $values) {
             $required = $values['required'];
-            if($required == 1){
+            if ($required == 1) {
                 $meta_key = cust_dig_filter_string($values['meta_key']);
                 $post_index = 'digits_reg_' . $meta_key;
                 $_POST[$post_index] = '1';
             }
-
         }
         $_REQUEST['json'] = 1;
 
         if (isset($params['referral_code'])) {
-            $_COOKIE['woo_wallet_referral'] = sanitize_text_field( wp_unslash( $params['referral_code'] ) );
+            $_COOKIE['woo_wallet_referral'] = sanitize_text_field(wp_unslash($params['referral_code']));
         }
     }
 
     function digits_register_check()
     {
-        if(!function_exists('digits_create_user')) {
-            return parent::sendError("plugin_not_found", "Please install  the  DIGITS: Wordpress Mobile Number Signup and Login  plugin", 400);
+        if (!function_exists('digits_create_user')) {
+            return parent::sendError("plugin_not_found", "Please install the DIGITS: Wordpress Mobile Number Signup and Login plugin", 400);
         }
 
         $json = file_get_contents('php://input');
         $params = json_decode($json, TRUE);
 
-        if(empty($params['email'])){
+        if (empty($params['email'])) {
             return parent::sendError("invalid_email", 'Email is required', 400);
         }
         if (!empty($params['email']) && email_exists($params['email'])) {
             return parent::sendError("existed_email", 'Email already in use!', 400);
         }
 
-        if(empty($params['username'])){
+        if (empty($params['username'])) {
             return parent::sendError("invalid_username", 'Username is required', 400);
         }
         if (!empty($params['username']) && username_exists($params['username'])) {
             return parent::sendError("existed_username", 'Username already in use!', 400);
         }
 
-        if(empty($params['country_code'])){
+        if (empty($params['country_code'])) {
             return parent::sendError("invalid_country_code", 'Country code is required', 400);
         }
 
-        if(empty($params['mobile'])){
+        if (empty($params['mobile'])) {
             return parent::sendError("invalid_mobile", 'Mobile is required', 400);
         }
 
-        $mob = $params['country_code'].$params['mobile'];
+        $mob = $params['country_code'] . $params['mobile'];
         $mobuser = getUserFromPhone($mob);
         if ($mobuser != null  || username_exists($mob)) {
             return parent::sendError("existed_mobile", 'Mobile Number already in use!', 400);
@@ -1339,20 +1499,20 @@ class FlutterUserController extends FlutterBaseController
 
     function digits_register()
     {
-        if(!function_exists('digits_create_user')) {
-            return parent::sendError("plugin_not_found", "Please install  the  DIGITS: Wordpress Mobile Number Signup and Login  plugin", 400);
+        if (!function_exists('digits_create_user')) {
+            return parent::sendError("plugin_not_found", "Please install the DIGITS: Wordpress Mobile Number Signup and Login plugin", 400);
         }
 
-        define( 'REST_REQUEST', true );
+        define('REST_REQUEST', true);
         $this->mstore_digrest_set_variables();
         $userId = null;
-        add_filter('digits_user_created_response', function($data, $user_id){
+        add_filter('digits_user_created_response', function ($data, $user_id) {
             $data['user_id'] = $user_id;
             return $data;
-        },10, 2);
+        }, 10, 2);
         $data = digits_create_user();
-        define( 'REST_REQUEST', false );
-        remove_filter('digits_user_created_response','__return_false', 10);
+        define('REST_REQUEST', false);
+        remove_filter('digits_user_created_response', '__return_false', 10);
 
         if ($data['success'] === false) {
             return parent::sendError("invalid_data", explode("<br />",  $data['data']['msg'])[0], 400);
@@ -1371,22 +1531,22 @@ class FlutterUserController extends FlutterBaseController
 
     function digits_login_check()
     {
-        if(!function_exists('digits_create_user')) {
-            return parent::sendError("plugin_not_found", "Please install  the  DIGITS: Wordpress Mobile Number Signup and Login  plugin", 400);
+        if (!function_exists('digits_create_user')) {
+            return parent::sendError("plugin_not_found", "Please install the DIGITS: Wordpress Mobile Number Signup and Login plugin", 400);
         }
 
         $json = file_get_contents('php://input');
         $params = json_decode($json, TRUE);
 
-        if(empty($params['country_code'])){
+        if (empty($params['country_code'])) {
             return parent::sendError("invalid_country_code", 'Country code is required', 400);
         }
 
-        if(empty($params['mobile'])){
+        if (empty($params['mobile'])) {
             return parent::sendError("invalid_mobile", 'Mobile is required', 400);
         }
 
-        $mob = $params['country_code'].$params['mobile'];
+        $mob = $params['country_code'] . $params['mobile'];
         $mobuser = getUserFromPhone($mob);
         if ($mobuser == null) {
             return parent::sendError("not_existed_mobile", 'Phone number is not registered!', 400);
@@ -1397,8 +1557,8 @@ class FlutterUserController extends FlutterBaseController
 
     function digits_login()
     {
-        if(!function_exists('dig_validateMobileNumber')) {
-            return parent::sendError("plugin_not_found", "Please install  the  DIGITS: Wordpress Mobile Number Signup and Login  plugin", 400);
+        if (!function_exists('dig_validateMobileNumber')) {
+            return parent::sendError("plugin_not_found", "Please install the DIGITS: Wordpress Mobile Number Signup and Login plugin", 400);
         }
 
         $this->mstore_digrest_set_variables();
@@ -1407,7 +1567,7 @@ class FlutterUserController extends FlutterBaseController
         $validateMob = dig_validateMobileNumber($_POST['digregcode'], $_POST['digits_reg_mail'], $otp, null, 1, null, false);
 
         if ($validateMob['success'] === false) {
-            return parent::sendError("invalid_data",$validateMob['msg'], 400);
+            return parent::sendError("invalid_data", $validateMob['msg'], 400);
         }
 
         $user = getUserFromPhone($validateMob['countrycode'] . $validateMob['mobile']);
@@ -1421,18 +1581,18 @@ class FlutterUserController extends FlutterBaseController
 
     function digits_send_otp()
     {
-        if(!function_exists('digits_create_user')) {
-            return parent::sendError("plugin_not_found", "Please install  the  DIGITS: Wordpress Mobile Number Signup and Login  plugin", 400);
+        if (!function_exists('digits_create_user')) {
+            return parent::sendError("plugin_not_found", "Please install the DIGITS: Wordpress Mobile Number Signup and Login plugin", 400);
         }
 
         $json = file_get_contents('php://input');
         $params = json_decode($json, TRUE);
 
-        if(empty($params['country_code'])){
+        if (empty($params['country_code'])) {
             return parent::sendError("invalid_country_code", 'Country code is required', 400);
         }
 
-        if(empty($params['mobile'])){
+        if (empty($params['mobile'])) {
             return parent::sendError("invalid_mobile", 'Mobile is required', 400);
         }
 
@@ -1451,18 +1611,18 @@ class FlutterUserController extends FlutterBaseController
 
     function digits_resend_otp()
     {
-        if(!function_exists('digits_resendotp')) {
-            return parent::sendError("plugin_not_found", "Please install  the  DIGITS: Wordpress Mobile Number Signup and Login  plugin", 400);
+        if (!function_exists('digits_resendotp')) {
+            return parent::sendError("plugin_not_found", "Please install the DIGITS: Wordpress Mobile Number Signup and Login plugin", 400);
         }
 
         $json = file_get_contents('php://input');
         $params = json_decode($json, TRUE);
 
-        if(empty($params['country_code'])){
+        if (empty($params['country_code'])) {
             return parent::sendError("invalid_country_code", 'Country code is required', 400);
         }
 
-        if(empty($params['mobile'])){
+        if (empty($params['mobile'])) {
             return parent::sendError("invalid_mobile", 'Mobile is required', 400);
         }
 
@@ -1497,10 +1657,10 @@ class FlutterUserController extends FlutterBaseController
 
     function delete_account($request)
     {
-        if(checkWhiteListAccounts($request["id"])){
+        if (checkWhiteListAccounts($request["id"])) {
             return parent::sendError("invalid_account", "This account can't delete", 400);
-        }else{
-            require_once(ABSPATH.'wp-admin/includes/user.php');
+        } else {
+            require_once(ABSPATH . 'wp-admin/includes/user.php');
             return wp_delete_user($request["id"]);
         }
     }

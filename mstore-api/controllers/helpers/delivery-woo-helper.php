@@ -64,7 +64,7 @@ class DeliveryWooHelper
         $pending_count = 0;
         $total = 0;
 
-        if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php')) {
+        if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('local-delivery-drivers-for-woocommerce-premium/local-delivery-drivers-for-woocommerce.php')) {
             global $wpdb;
 
             if ($this->is_hpos_enabled()) {
@@ -149,7 +149,7 @@ class DeliveryWooHelper
         if(isset($order_id)){
             $order_id = sanitize_text_field($order_id);
             if(is_numeric($order_id)){
-                if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
+                if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('local-delivery-drivers-for-woocommerce-premium/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
                     $order = wc_get_order($order_id);
                     return new WP_REST_Response(array(
                         'status' => 'success',
@@ -192,7 +192,7 @@ class DeliveryWooHelper
     {
         $api = new WC_REST_Orders_V1_Controller();
         $results = [];
-        if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php')) {
+        if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('local-delivery-drivers-for-woocommerce-premium/local-delivery-drivers-for-woocommerce.php')) {
             $page = 1;
             $per_page = 10;
             if (isset($request['page'])) {
@@ -486,7 +486,7 @@ class DeliveryWooHelper
 
     function set_off_time($user_id, $is_available)
     {
-        if(is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php')) {
+        if(is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('local-delivery-drivers-for-woocommerce-premium/local-delivery-drivers-for-woocommerce.php')) {
             $new_value = '1';  // Available
             $old_value = '0';
             if ($is_available !== 'true') {

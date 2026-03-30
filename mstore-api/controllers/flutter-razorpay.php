@@ -19,7 +19,7 @@ class FlutterRazorpay extends FlutterBaseController
     protected $namespace = 'api/flutter_razorpay';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */

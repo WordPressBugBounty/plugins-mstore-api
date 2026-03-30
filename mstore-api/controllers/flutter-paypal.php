@@ -19,7 +19,7 @@ class FlutterPayPal extends FlutterBaseController
     protected $namespace = 'api/flutter_paypal';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */

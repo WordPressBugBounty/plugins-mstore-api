@@ -19,7 +19,7 @@ class FlutterPayTm extends FlutterBaseController
     protected $namespace = 'api/flutter_paytm';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */

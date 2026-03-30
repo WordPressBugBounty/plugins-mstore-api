@@ -20,7 +20,7 @@ class FlutterDelivery extends FlutterBaseController
     protected $namespace = 'delivery';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */

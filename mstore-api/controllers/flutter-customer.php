@@ -11,7 +11,7 @@ class CUSTOM_WC_REST_Customers_Controller extends WC_REST_Customers_Controller
     protected $namespace = 'api/flutter_customer';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */

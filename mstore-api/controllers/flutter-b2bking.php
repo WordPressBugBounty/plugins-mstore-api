@@ -19,7 +19,7 @@ class FlutterB2BKing extends FlutterBaseController
     protected $namespace = 'api/flutter_b2bking';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */

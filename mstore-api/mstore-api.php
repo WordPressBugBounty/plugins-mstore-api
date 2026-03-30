@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.18.3
+ * Version: 4.18.4
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  *
@@ -32,6 +32,7 @@ include_once plugin_dir_path(__FILE__) . "controllers/flutter-paystack.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-flutterwave.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-myfatoorah.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-midtrans.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-modempay.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-paid-memberships-pro.php";
 include_once plugin_dir_path(__FILE__) . "controllers/listing-rest-api/class.api.fields.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-blog.php";
@@ -50,6 +51,7 @@ include_once plugin_dir_path(__FILE__) . "controllers/flutter-review.php";
 include_once plugin_dir_path(__FILE__) . "controllers/helpers/firebase-message-helper.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-fib.php";
 include_once plugin_dir_path(__FILE__) . "controllers/helpers/firebase-phone-auth-helper.php";
+include_once plugin_dir_path(__FILE__) . "controllers/helpers/pure-taxonomies-helper.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-auction.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-iyzico.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-phonepe.php";
@@ -69,7 +71,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.18.3';
+    public $version = '4.18.4';
 
     public function __construct()
     {
@@ -558,6 +560,11 @@ function flutter_custom_rest_product_brand_query($args, $request)
 
 function flutter_custom_rest_product_taxomomy_query($args, $request, $taxonomy)
 {
+    // If include or exclude parameters are explicitly set in the request, don't override them
+    if (!empty($request['include']) || !empty($request['exclude'])) {
+        return $args;
+    }
+
     $hide_empty = isset($args['hide_empty']) && $args['hide_empty'] == true;
 
     // `include` parameter can be an array or comma separated string
@@ -826,7 +833,7 @@ function flutter_custom_change_product_attribute($response, $item, $request)
     return $response;
 }
 
-/// Custom response for product a tag or brand
+/// Custom response for a product tag or brand
 function flutter_custom_change_product_taxonomy($response, $item, $request)
 {
     // There is only a maximum of 1 entry because term_ids is an array of a

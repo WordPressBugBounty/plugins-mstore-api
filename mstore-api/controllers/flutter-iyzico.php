@@ -21,7 +21,7 @@ class FlutterIyzico extends FlutterBaseController
     protected $namespace = 'api/flutter_iyzico';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */

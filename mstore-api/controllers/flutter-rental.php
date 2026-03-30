@@ -19,7 +19,7 @@ class FlutterRental extends FlutterBaseController
     protected $namespace = 'api/flutter_rental';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */

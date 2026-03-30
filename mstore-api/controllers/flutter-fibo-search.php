@@ -22,7 +22,7 @@ class FlutterFiboSearch extends FlutterBaseController
     protected $namespace = 'api/flutter_fibo_search';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */
@@ -119,14 +119,6 @@ class FlutterFiboSearch extends FlutterBaseController
             // Get settings
             $suggestions_limit = (int)$settings->getOption('suggestions_limit', 10);
             $min_chars = (int)$settings->getOption('min_chars', 3);
-            $show_image = $settings->getOption('show_product_image') === 'on';
-            $show_price = $settings->getOption('show_product_price') === 'on';
-            $show_desc = $settings->getOption('show_product_desc') === 'on';
-            $show_sku = $settings->getOption('show_product_sku') === 'on';
-            $search_in_content = $settings->getOption('search_in_product_content') === 'on';
-            $search_in_excerpt = $settings->getOption('search_in_product_excerpt') === 'on';
-            $search_in_sku = $settings->getOption('search_in_product_sku') === 'on';
-            $exclude_out_of_stock = $settings->getOption('exclude_out_of_stock') === 'on';
             $show_matching_categories = $settings->getOption('show_product_tax_product_cat') === 'on';
             $show_matching_tags = $settings->getOption('show_product_tax_product_tag') === 'on';
 
@@ -203,72 +195,68 @@ class FlutterFiboSearch extends FlutterBaseController
                     )
                 );
 
-                if ($show_image) {
-                    $images = array();
-                    // Get featured image
-                    $featured_image_id = $wc_product->get_image_id();
-                    if ($featured_image_id) {
-                        $images[] =  wp_get_attachment_image_url($featured_image_id);
-                    }
-
-                    // Get gallery images
-                    $gallery_image_ids = $wc_product->get_gallery_image_ids();
-                    foreach ($gallery_image_ids as $gallery_image_id) {
-                        $images[] = wp_get_attachment_image_url($gallery_image_id);
-                    }
-                    $product_data['images'] = $images;
+                // Get images
+                $images = array();
+                // Get featured image
+                $featured_image_id = $wc_product->get_image_id();
+                if ($featured_image_id) {
+                    $images[] =  wp_get_attachment_image_url($featured_image_id);
                 }
 
-                if ($show_price) {
-                    if ($wc_product->is_type('variable')) {
-                        $variation_prices = $wc_product->get_variation_prices();
-                        $min_price = current($variation_prices['price']) ?: '';
-                        $max_price = end($variation_prices['price']) ?: '';
-                        $min_regular = current($variation_prices['regular_price']) ?: '';
-                        $max_regular = end($variation_prices['regular_price']) ?: '';
-                        $min_sale = current($variation_prices['sale_price']) ?: '';
-                        $max_sale = end($variation_prices['sale_price']) ?: '';
-                    } else {
-                        $price = $wc_product->get_price() ?: '';
-                        $min_price = $max_price = $price;
-                        $min_regular = $max_regular = $wc_product->get_regular_price() ?: '';
-                        $min_sale = $max_sale = $wc_product->get_sale_price() ?: '';
-                    }
-                    $product_data['price'] = $wc_product->get_price() ?: '';
-                    $product_data['regular_price'] = $wc_product->get_regular_price() ?: '';
-                    $product_data['sale_price'] = $wc_product->get_sale_price() ?: '';
-                    $product_data['min_price'] = $min_price;
-                    $product_data['max_price'] = $max_price;
-                    $product_data['min_regular_price'] = $min_regular;
-                    $product_data['max_regular_price'] = $max_regular;
-                    $product_data['min_sale_price'] = $min_sale;
-                    $product_data['max_sale_price'] = $max_sale;
-                    $product_data['price_formatted'] = wc_price($product_data['price']);
-                    $product_data['regular_price_formatted'] = wc_price($product_data['regular_price']);
-                    $product_data['sale_price_formatted'] = $product_data['sale_price'] ? wc_price($product_data['sale_price']) : '';
-                    $product_data['price_range'] = $wc_product->get_price_html();
+                // Get gallery images
+                $gallery_image_ids = $wc_product->get_gallery_image_ids();
+                foreach ($gallery_image_ids as $gallery_image_id) {
+                    $images[] = wp_get_attachment_image_url($gallery_image_id);
                 }
+                $product_data['images'] = $images;
 
-                if ($show_desc) {
-                    $short_description = $wc_product->get_short_description();
-                    // Convert HTML to plain text
-                    $short_description = wp_strip_all_tags($short_description);
-                    $short_description = html_entity_decode($short_description);
-                    $short_description = preg_replace('/\s+/', ' ', $short_description);
-                    $short_description = trim($short_description);
-                    $product_data['short_description'] = $short_description;
-                    $description = $wc_product->get_description();
-                    // Convert HTML to plain text
-                    $description = wp_strip_all_tags($description); // Remove HTML tags
-                    $description = html_entity_decode($description); // Convert HTML entities to characters
-                    $description = preg_replace('/\s+/', ' ', $description); // Replace multiple spaces with single space
-                    $description = trim($description); // Remove leading/trailing spaces
-                    $product_data['description'] = $description;
+                // Get price
+                if ($wc_product->is_type('variable')) {
+                    $variation_prices = $wc_product->get_variation_prices();
+                    $min_price = current($variation_prices['price']) ?: '';
+                    $max_price = end($variation_prices['price']) ?: '';
+                    $min_regular = current($variation_prices['regular_price']) ?: '';
+                    $max_regular = end($variation_prices['regular_price']) ?: '';
+                    $min_sale = current($variation_prices['sale_price']) ?: '';
+                    $max_sale = end($variation_prices['sale_price']) ?: '';
+                } else {
+                    $price = $wc_product->get_price() ?: '';
+                    $min_price = $max_price = $price;
+                    $min_regular = $max_regular = $wc_product->get_regular_price() ?: '';
+                    $min_sale = $max_sale = $wc_product->get_sale_price() ?: '';
                 }
+                $product_data['price'] = $wc_product->get_price() ?: '';
+                $product_data['regular_price'] = $wc_product->get_regular_price() ?: '';
+                $product_data['sale_price'] = $wc_product->get_sale_price() ?: '';
+                $product_data['min_price'] = $min_price;
+                $product_data['max_price'] = $max_price;
+                $product_data['min_regular_price'] = $min_regular;
+                $product_data['max_regular_price'] = $max_regular;
+                $product_data['min_sale_price'] = $min_sale;
+                $product_data['max_sale_price'] = $max_sale;
+                $product_data['price_formatted'] = wc_price($product_data['price']);
+                $product_data['regular_price_formatted'] = wc_price($product_data['regular_price']);
+                $product_data['sale_price_formatted'] = $product_data['sale_price'] ? wc_price($product_data['sale_price']) : '';
+                $product_data['price_range'] = $wc_product->get_price_html();
 
-                if ($show_sku) {
-                    $product_data['sku'] = $wc_product->get_sku();
-                }
+                // Get description
+                $short_description = $wc_product->get_short_description();
+                // Convert HTML to plain text
+                $short_description = wp_strip_all_tags($short_description);
+                $short_description = html_entity_decode($short_description);
+                $short_description = preg_replace('/\s+/', ' ', $short_description);
+                $short_description = trim($short_description);
+                $product_data['short_description'] = $short_description;
+                $description = $wc_product->get_description();
+                // Convert HTML to plain text
+                $description = wp_strip_all_tags($description); // Remove HTML tags
+                $description = html_entity_decode($description); // Convert HTML entities to characters
+                $description = preg_replace('/\s+/', ' ', $description); // Replace multiple spaces with single space
+                $description = trim($description); // Remove leading/trailing spaces
+                $product_data['description'] = $description;
+
+                // Get SKU
+                $product_data['sku'] = $wc_product->get_sku();
 
                 // Get attributes
                 $attributes = array();

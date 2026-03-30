@@ -18,7 +18,7 @@ class FlutterCCAvenue extends FlutterBaseController
     protected $namespace = 'api/flutter_cc_avenue';
 
     /**
-     * Register all routes releated with stores
+     * Register all routes related with stores
      *
      * @return void
      */
