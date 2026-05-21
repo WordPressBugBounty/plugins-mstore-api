@@ -119,6 +119,7 @@ class ProductManagementHelper
             $p["type"] = $product->get_type();
             $p["on_sale"] = $product->is_on_sale();
             $p["tags"] = wp_get_post_terms($product->get_id(), "product_tag");
+            $p["brands"] = wp_get_post_terms($product->get_id(), "product_brand");
             $p['weight'] = $product->get_weight();
             $p['dimensions'] = [
                 'length' => $product->get_length(),
@@ -154,7 +155,7 @@ class ProductManagementHelper
                 ];
             }
             $p["attributesData"] = $attributes;
-			
+
             if ($product->get_type() == "variable") {
                 $result = [];
                 $p['min_price'] = $product->get_variation_price();
@@ -207,7 +208,7 @@ class ProductManagementHelper
                     $variation_attributes = $variation_p->get_attributes();
                     foreach($variation_attributes as $taxonomy=>$term_slug){
                         $attr_data = array();
-                        
+
                         // Decode taxonomy and term if needed
                         $decoded_taxonomy = urldecode($taxonomy);
                         $decoded_term_slug = urldecode($term_slug);
@@ -317,7 +318,7 @@ class ProductManagementHelper
     /// CREATE ///
     public function create_or_update_product($request, $user_id)
     {
-	
+
         $user = get_userdata($user_id);
 
         $is_seller = false;
@@ -335,10 +336,7 @@ class ProductManagementHelper
         if ($request["status"] != null) {
             $requestStatus = sanitize_text_field($request["status"]);
         }
-		
 		$is_create_product = false;
-		
-
 
 		$id = sanitize_text_field($request["id"]);
         $name = sanitize_text_field($request["name"]);
@@ -348,6 +346,7 @@ class ProductManagementHelper
         $short_description = sanitize_text_field($request["short_description"]);
 
         $tags = sanitize_text_field($request['tags']);
+        $brands = isset($request['brands']) ? sanitize_text_field($request['brands']) : null;
 
         $regular_price = sanitize_text_field($request['regular_price']);
         $sale_price = sanitize_text_field($request['sale_price']);
@@ -360,19 +359,19 @@ class ProductManagementHelper
         $height = isset($request['height']) ? sanitize_text_field($request['height']) : '';
 
 		$category_ids  = sanitize_text_field($request['category_ids']);
-		
+
         if(isset($request['featuredImage'])){
             $featured_image = sanitize_text_field($request['featuredImage']);
         }
 		if(isset($request['images'])){
             $product_images = sanitize_text_field($request['images']);
         }
-		
+
 		$product_attributes = $request['product_attributes'];
         $variations = $request['variation_products'];
         $stock_status = $request['stock_status'];
 
-		
+
         $count = 1;
 		if(empty($id)){
 			$is_create_product = true;
@@ -388,33 +387,33 @@ class ProductManagementHelper
                 	"post_type" => "product",
             	];
 				            // Create a simple WooCommerce product
-            	$post_id = wp_insert_post($args);	
+            	$post_id = wp_insert_post($args);
 			}
 			else{
 				$post_id = sanitize_text_field($request["id"]);
 			}
-					
+
 			$product = wc_get_product($post_id);
 			if ($product->get_type() !== $type) {
-					
+
                 // Get the correct product classname from the new product type
                 $product_classname = WC_Product_Factory::get_product_classname(
                     $product->get_id(),
                     $type
                 );
 
-			
+
                 // Get the new product object from the correct classname
                 $product = new $product_classname($product->get_id());
                 $product->save();
             }
 
 			if (isset($featured_image)) {
-			
+
                 if (!empty($featured_image)) {
-					
+
                     if ($this->http_check($featured_image)) {
-						
+
                         $featured_image_id = $this->find_image_id(
                             $featured_image
                         );
@@ -461,10 +460,10 @@ class ProductManagementHelper
                 }
                 $product->set_gallery_image_ids($img_array);
             }
-          
+
             if (isset($product) && !is_wp_error($product)) {
                 $product->set_name($name);
-  				
+
                 // Sales and prices.
                 if (in_array($product->get_type(),["variable", "grouped"],true)) {
                     $product->set_regular_price("");
@@ -473,7 +472,7 @@ class ProductManagementHelper
                     $product->set_date_on_sale_from("");
                     $product->set_price("");
                 } else {
-				
+
                       // Regular Price.
                     if (isset($regular_price) && !empty($regular_price)) {
                         $product->set_regular_price($regular_price);
@@ -500,7 +499,7 @@ class ProductManagementHelper
                     }
                 }
                 $product->set_stock_status($stock_status);
-                
+
                 // Stock data.
                 if ("yes" === get_option("woocommerce_manage_stock")) {
                     // Manage stock.
@@ -547,9 +546,9 @@ class ProductManagementHelper
                 //Description
                 $product->set_short_description($short_description);
                 $product->set_description($description);
-			
+
                 $attribute_json = json_decode($product_attributes,true);
-			
+
                 $pro_attributes = [];
                 foreach ($attribute_json as $key => $value) {
                     if ($value["isActive"]) {
@@ -567,13 +566,13 @@ class ProductManagementHelper
                         $pro_attributes[] = $attribute;
                     }
                 }
-		
+
                 $product->set_props([
                     "attributes" => $pro_attributes,
                 ]);
                 $product->save();
-				
-				
+
+
 
                 if ($product->get_type() == "variable") {
                     $variations_arr = json_decode($variations,true);
@@ -582,7 +581,7 @@ class ProductManagementHelper
                         if(isset($variation['id'])){
 							$variation_id = $variation['id'];
 							if(!in_array(intval($variation_id),$available_variations_arr)){
-								$var_product = wc_get_product($variation_id);  
+								$var_product = wc_get_product($variation_id);
 								$var_product->delete();
 								continue;
 							}
@@ -615,11 +614,11 @@ class ProductManagementHelper
                         $variationProduct->set_stock_quantity(
                             $variation["stock_quantity"]
                         );
-				
+
 						if(isset($variationAttrArr)){
 							 $variationProduct->set_attributes($variationAttrArr);
 						}
-        
+
                         $variationProduct->set_manage_stock(
                             boolval($variation["manage_stock"])
                         );
@@ -661,6 +660,12 @@ class ProductManagementHelper
                     $tags = array_filter(explode(",", $tags));
                     wp_set_object_terms($post_id, $tags, "product_tag");
                 }
+                if (isset($brands)) {
+                    $brands = array_values(array_filter(
+                        array_map('absint', explode(',', (string) $brands))
+                    ));
+                    wp_set_object_terms($post_id, $brands, "product_brand");
+                }
                 update_post_meta($product->get_id(),'_sku',$sku);
                 wp_update_post([
                     "ID" => $product->get_id(),
@@ -682,7 +687,7 @@ class ProductManagementHelper
                 ]);
                 //print_r($product);
                 $p = $product->get_data();
-		
+
                 /**** WC Rest Api doesn't return featured_image and the gallery is incorrect, it includes featured_image, so need to separate to get gallery and featured_image *****/
                 $image_arr = [];
                 foreach (array_filter($p["gallery_image_ids"]) as $img) {

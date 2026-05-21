@@ -2,8 +2,8 @@
 Contributors:      inspireui
 Tags:              flutter, app builder, app creator, mobile app builder, woocommerce app
 Requires at least: 4.4
-Tested up to:      6.9.0
-Stable tag:        4.18.4
+Stable tag:        4.19.0
+Tested up to:      7.0
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,6 +48,19 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 1. Click Install.
 
 == Changelog ==
+= 4.19.0 =
+  * Add Cashfree payment integration
+  * Add get_location_fields endpoint
+  * Support listing_id in get-reviews-criteria API and return value/count stats
+  * Support multi images in get_reviews (Listeo)
+  * Support HTML content for blog creation
+  * Add listing images to order line items
+  * Harden brand parsing for product create/update
+  * Fix missing store categories in Dokan
+  * Fix permission check in Appointment get_slots endpoint
+  * Security: Fix broken access control in user registration and vendor-admin auth
+  * Security: Fix unauthenticated order status update bypass in flutter_order update permission check
+
 = 4.18.4 =
   * Built-in support for WP REST API (Pure Taxonomies & REST API Controller plugins no longer required)
   * Add support for ModemPay webhook

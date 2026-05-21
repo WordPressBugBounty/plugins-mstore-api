@@ -247,16 +247,36 @@ class FlutterBooking extends FlutterBaseController
             $params["staff_ids"] = $request['staff_ids'];
         }
         if (isset($request["date"])) {
-            $timezone = new DateTimeZone(wc_appointment_get_timezone_string());
             $params["min_date"] = $request['date'];
             $params["max_date"] = date("Y-m-d", strtotime($request['date'] . " +1 day"));
         }
         $request->set_query_params($params);
         $controller = new WC_Appointments_REST_Slots_Controller();
 
-        $slots = $controller->get_items($request);
-        $slots = array_values(array_filter($slots["records"], function ($item) {
-            return $item["scheduled"] == 0;
+        // We need to bypass the permission check by adding this filter before
+        // calling get_items and remove it after that. Because
+        // `wc_rest_check_post_permissions` in
+        // `WC_Appointments_REST_Slots_Controller::get_items()` will check the
+        // permissions for the current user which is not working for our case
+        // (guest user).
+        add_filter('woocommerce_rest_check_permissions', '__return_true');
+        try {
+            $response = $controller->get_items($request);
+        } finally {
+            remove_filter('woocommerce_rest_check_permissions', '__return_true');
+        }
+
+        if (is_wp_error($response)) {
+            return parent::sendError("slots_error", $response->get_error_message(), 500);
+        }
+
+        $slots_data = $response instanceof WP_REST_Response ? $response->get_data() : $response;
+        $records = (is_array($slots_data) && isset($slots_data["records"]) && is_array($slots_data["records"]))
+            ? $slots_data["records"]
+            : [];
+
+        $slots = array_values(array_filter($records, function ($item) {
+            return isset($item["scheduled"]) && (int) $item["scheduled"] === 0;
         }));
         return array_values(array_unique(array_map(function ($item) {
             return $item["date"];

@@ -1106,6 +1106,7 @@ class FlutterWCFMHelper
         $store_id = $request['id'];
         $page = isset($request["page"]) ? $request["page"] : 1;
         $limit = isset($request["limit"]) ? $request["limit"] : 10;
+        $platform = isset($request['platform']) ? $request['platform'] : null;
         $params = array('page' => $page, 'per_page' => $limit, 'orderby' => 'name', 'order' => 'asc');
         if (isset($request['lang'])) {
             $params['lang'] = $request['lang'];
@@ -1113,19 +1114,35 @@ class FlutterWCFMHelper
         if (isset($request['hide_empty'])) {
             $params['hide_empty'] = $request['hide_empty'];
         }
-        $exclude = $request['exclude'];
+        $exclude = isset($request['exclude']) ? $request['exclude'] : null;
         if (isset($exclude) && is_string($exclude)) {
             $params['exclude'] = explode(',', $exclude);
         }
 
-        if (isset($store_id)) {
+        if ($store_id > 0) {
             global $woocommerce, $wpdb;
             $table_name = $wpdb->prefix . "posts";
-            $sql = "SELECT * FROM `$table_name` ";
-            $sql .= "WHERE `$table_name`.`post_type` = 'product' AND `$table_name`.`post_status` = 'publish' ";
-            $sql .= "AND `$table_name`.`post_author` = %s";
-            $sql = $wpdb->prepare($sql, $store_id);
-            $products = $wpdb->get_results($sql);
+            $postmeta_table = $wpdb->prefix . "postmeta";
+
+            if ($platform === 'dokan') {
+                $sql = "SELECT DISTINCT p.ID FROM {$table_name} p ";
+                $sql .= "LEFT JOIN {$postmeta_table} pm ON p.ID = pm.post_id ";
+                $sql .= "WHERE p.post_type = 'product' AND p.post_status = 'publish' ";
+                $sql .= "AND (p.post_author = %d OR (pm.meta_key IN ('_dokan_vendor_id', 'dokan_vendor_id') AND pm.meta_value = %d))";
+                $sql = $wpdb->prepare($sql, $store_id, $store_id);
+            } else {
+                $sql = "SELECT p.ID FROM {$table_name} p ";
+                $sql .= "WHERE p.post_type = 'product' AND p.post_status = 'publish' ";
+                $sql .= "AND p.post_author = %d";
+                $sql = $wpdb->prepare($sql, $store_id);
+            }
+
+            $product_ids = $wpdb->get_col($sql);
+
+            $products = array();
+            foreach ((array)$product_ids as $product_id) {
+                $products[] = (object) array('ID' => absint($product_id));
+            }
 
             $theme = wp_get_theme();
             $is_listeo = $theme->name == 'Listeo';
@@ -1158,7 +1175,8 @@ class FlutterWCFMHelper
             $categoryIds = array();
             $excludes = isset($params['exclude']) ? $params['exclude'] : array();
             foreach ($products as $object) {
-                $terms = get_the_terms($object->ID ?? $object->get_id(), 'product_cat');
+                $product_id = $object->ID ?? $object->get_id();
+                $terms = get_the_terms($product_id, 'product_cat');
                 foreach ((array)$terms as $term) {
                     $cat_id = $term->term_id;
                     if (!in_array($cat_id, $categoryIds) && !in_array($cat_id, $excludes)) {
@@ -1166,10 +1184,33 @@ class FlutterWCFMHelper
                     }
                 }
             }
-            if (empty($categoryIds)) {
-                return [];
+            // Fallback: read raw category relationships directly from DB to avoid missing terms from runtime term filters.
+            $raw_category_ids = array();
+            if (!empty($product_ids)) {
+                $product_ids = array_map('absint', (array)$product_ids);
+                $placeholders = implode(',', array_fill(0, count($product_ids), '%d'));
+                $sql_terms = "SELECT DISTINCT tt.term_id FROM {$wpdb->term_relationships} tr ";
+                $sql_terms .= "INNER JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id ";
+                $sql_terms .= "WHERE tt.taxonomy = 'product_cat' AND tr.object_id IN ({$placeholders})";
+                $sql_terms = $wpdb->prepare($sql_terms, $product_ids);
+                $raw_category_ids = array_map('absint', (array)$wpdb->get_col($sql_terms));
+                if (!empty($raw_category_ids)) {
+                    $categoryIds = array_values(array_unique(array_merge($categoryIds, $raw_category_ids)));
+                }
             }
-            $params['include'] = $categoryIds;
+
+            // Keep only categories directly attached to vendor products.
+            $final_category_ids = array_values(array_unique(array_filter(array_map('absint', (array)$categoryIds))));
+            if (!empty($excludes)) {
+                $final_category_ids = array_values(array_filter($final_category_ids, function ($cat_id) use ($excludes) {
+                    return !in_array($cat_id, $excludes);
+                }));
+            }
+
+            if (empty($final_category_ids)) {
+                return array();
+            }
+            $params['include'] = $final_category_ids;
         }
         $controller = new WC_REST_Product_Categories_Controller();
         $req = new WP_REST_Request('GET');

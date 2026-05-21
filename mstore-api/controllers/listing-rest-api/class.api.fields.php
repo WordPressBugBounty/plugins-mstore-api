@@ -555,11 +555,33 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 return true;
             }
         ));
+
+        register_rest_route('wp/v2', '/get-location-fields', array(
+            'methods' => 'GET',
+            'callback' => array(
+                $this,
+                'get_location_fields'
+            ),
+            'permission_callback' => function () {
+                return true;
+            }
+        ));
+
         register_rest_route('wp/v2', '/get-reviews-criteria', array(
             'methods' => 'GET',
             'callback' => array(
                 $this,
                 'get_reviews_criteria'
+            ),
+            'args' => array(
+                'listing_id' => array(
+                    'required' => false,
+                    'default' => 0,
+                    'validate_callback' => function ($param) {
+                        return is_numeric($param);
+                    },
+                    'sanitize_callback' => 'absint',
+                ),
             ),
             'permission_callback' => function () {
                 return true;
@@ -574,15 +596,53 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 $criteria = listeo_get_reviews_criteria();
             }
 
+            $listing_id = (int) $request->get_param('listing_id');
+
+            if ($listing_id) {
+                $post = get_post($listing_id);
+
+                if (!$post || $post->post_type !== 'listing' || $post->post_status !== 'publish') {
+                    return new WP_Error("not_found", "Listing not found", array('status' => 404));
+                }
+            }
+
+            $counts = [];
+            if ($listing_id && !empty($criteria)) {
+                global $wpdb;
+                $keys = array_keys($criteria);
+                $placeholders = implode(',', array_fill(0, count($keys), '%s'));
+                $query = $wpdb->prepare(
+                    "SELECT cm.meta_key, COUNT(*) as cnt
+                     FROM {$wpdb->comments} c
+                     INNER JOIN {$wpdb->commentmeta} cm ON c.comment_ID = cm.comment_ID
+                     WHERE c.comment_post_ID = %d AND c.comment_approved = '1'
+                     AND cm.meta_key IN ($placeholders)
+                     GROUP BY cm.meta_key",
+                    array_merge([$listing_id], $keys)
+                );
+                $rows = $wpdb->get_results($query);
+                foreach ($rows as $row) {
+                    $counts[$row->meta_key] = (int) $row->cnt;
+                }
+            }
+
             $results = [];
             foreach ($criteria as $key => $value) {
                 $label = (is_array($value) && isset($value['label'])) ? $value['label'] : $value;
                 $tooltip = (is_array($value) && isset($value['tooltip'])) ? $value['tooltip'] : '';
-                $results[] = [
+                $item = [
                     'key' => $key,
                     'label' => $label,
                     'tooltip' => $tooltip,
                 ];
+
+                if ($listing_id) {
+                    $meta_value = get_post_meta($listing_id, $key . '-avg', true);
+                    $item['value'] = ($meta_value !== '' && $meta_value !== null) ? (float) $meta_value : 0;
+                    $item['count'] = $counts[$key] ?? 0;
+                }
+
+                $results[] = $item;
             }
             return $results;
         }
@@ -1351,6 +1411,64 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         }
 
         return new WP_Error("not_found", "get_contact_fields is not implemented", array('status' => 404));
+    }
+
+    public function get_location_fields() {
+        if ($this->_isListeo) {
+            // Get location fields from options saved by Listeo_Fields_Editor
+            $location_fields = get_option('listeo_location_tab_fields');
+
+            if (empty($location_fields)) {
+                // Fallback to default fields from Listeo_Core_Meta_Boxes
+                $default_fields = Listeo_Core_Meta_Boxes::meta_boxes_location();
+                if (isset($default_fields['fields'])) {
+                    $location_fields = $default_fields['fields'];
+                }
+            }
+
+            $formatted_fields = array();
+            if (!empty($location_fields)) {
+                foreach ($location_fields as $key => $field) {
+                    $formatted_field = array(
+                        'id'          => $field['id'],
+                        'name'        => $field['name'],
+                        'type'        => $field['type'],
+                        'required'    => isset($field['required']) ? $field['required'] : false,
+                        'placeholder' => isset($field['placeholder']) ? $field['placeholder'] : (isset($field['attributes']['placeholder']) ? $field['attributes']['placeholder'] : ''),
+                        'icon'        => isset($field['icon']) ? $field['icon'] : '',
+                        'desc'        => isset($field['desc']) ? $field['desc'] : '',
+                    );
+
+                    // Handle options for select/multicheck fields
+                    if (isset($field['options']) && !empty($field['options'])) {
+                        if (is_array($field['options'])) {
+                            $formatted_field['options'] = array_map(function ($key, $value) {
+                                return array(
+                                    'key'   => $key,
+                                    'value' => $value
+                                );
+                            }, array_keys($field['options']), $field['options']);
+                        }
+                    }
+
+                    // Process repeatable fields
+                    if ($field['type'] == 'repeatable' && isset($field['options'])) {
+                        $formatted_field['repeatable_fields'] = array_map(function ($key, $value) {
+                            return array(
+                                'id'   => $key,
+                                'name' => $value
+                            );
+                        }, array_keys($field['options']), $field['options']);
+                    }
+
+                    $formatted_fields[] = $formatted_field;
+                }
+            }
+
+            return $formatted_fields;
+        }
+
+        return new WP_Error("not_found", "get_location_fields is not implemented", array('status' => 404));
     }
 
     // ListingPro theme functions
@@ -2690,16 +2808,25 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 $gallery_images = [];
                 if ($this->_isListeo) {
                     // Listeo stores attachment IDs in 'listeo-attachment-id' meta
-                    $attachment_ids = get_comment_meta($item->comment_ID, 'listeo-attachment-id', true);
+                    // Use $single = false to get all repeated meta values.
+                    $attachment_ids = get_comment_meta($item->comment_ID, 'listeo-attachment-id', false);
 
                     if (!empty($attachment_ids)) {
-                        // Can be single ID or comma-separated IDs
-                        $ids = is_array($attachment_ids) ? $attachment_ids : explode(',', $attachment_ids);
+                        $ids = [];
+                        foreach ($attachment_ids as $attachment_id) {
+                            // Keep compatibility when data is stored as comma-separated string.
+                            $raw_ids = is_array($attachment_id) ? $attachment_id : explode(',', (string) $attachment_id);
+                            foreach ($raw_ids as $raw_id) {
+                                $raw_id = trim($raw_id);
+                                if ($raw_id !== '') {
+                                    $ids[] = $raw_id;
+                                }
+                            }
+                        }
 
-                        foreach ($ids as $attachment_id) {
-                            $attachment_id = trim($attachment_id);
+                        foreach (array_unique($ids) as $attachment_id) {
                             if (is_numeric($attachment_id)) {
-                                $url = wp_get_attachment_url($attachment_id);
+                                $url = wp_get_attachment_url((int) $attachment_id);
                                 if ($url) {
                                     $gallery_images[] = $url;
                                 }

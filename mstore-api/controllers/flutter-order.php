@@ -118,16 +118,17 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
     function custom_update_item_permissions_check($request)
     {
         $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
-        $json = file_get_contents('php://input');
-        $params = json_decode($json, TRUE);
-        if (isset($cookie) && $cookie != null) {
-            $user_id = validateCookieLogin($cookie);
-            return !is_wp_error($user_id);
-        } else if(count(array_keys($params)) == 1 && array_key_exists('status', $params)){ // allow Guest to change order status when enable UpdateOrderStatus in the app
-            return true;
-        }else {
+        if (!isset($cookie) || $cookie == null) {
             return false;
         }
+
+        $user_id = validateCookieLogin($cookie);
+        if (is_wp_error($user_id)) {
+            return false;
+        }
+
+        wp_set_current_user($user_id);
+        return true;
     }
 
     function custom_delete_item_permissions_check($request)

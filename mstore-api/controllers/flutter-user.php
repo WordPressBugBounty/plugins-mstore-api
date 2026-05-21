@@ -541,7 +541,6 @@ class FlutterUserController extends FlutterBaseController
                     'description',
                     'rich_editing',
                     'user_registered',
-                    'role',
                     'jabber',
                     'aim',
                     'yim',
@@ -560,14 +559,22 @@ class FlutterUserController extends FlutterBaseController
                 }
 
                 $default_role = class_exists('WooCommerce') ? 'customer' : get_option('default_role');
-                if (isset($params['dokan_enable_selling'])) {
-                    $user['role'] = 'seller';
+                $requested_role = '';
+                if (array_key_exists('role', $params)) {
+                    $requested_role = sanitize_key($params['role']);
+                }
+
+                // Do not allow unauthenticated self-registration to set elevated roles,
+                // including via dokan_enable_selling.
+                if (
+                    !empty($requested_role) &&
+                    is_user_logged_in() &&
+                    current_user_can('create_users') &&
+                    get_role($requested_role)
+                ) {
+                    $user['role'] = $requested_role;
                 } else {
-                    if (array_key_exists('role', $params) && in_array($params['role'], ['wcfm_delivery_boy', 'driver', 'owner'], true)) {
-                        $user['role'] = $params['role'];
-                    } else {
-                        $user['role'] = $default_role;
-                    }
+                    $user['role'] = $default_role;
                 }
                 $_POST['user_role'] = $user['role']; //fix to register account with role in listeo
 

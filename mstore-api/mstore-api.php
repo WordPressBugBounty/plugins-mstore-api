@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.18.4
+ * Version: 4.19.0
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  *
@@ -55,6 +55,7 @@ include_once plugin_dir_path(__FILE__) . "controllers/helpers/pure-taxonomies-he
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-auction.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-iyzico.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-phonepe.php";
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-cashfree.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-points-offline-store.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-smart-cod.php";
 include_once plugin_dir_path(__FILE__) . "controllers/flutter-discount-rules.php";
@@ -71,7 +72,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.18.4';
+    public $version = '4.19.0';
 
     public function __construct()
     {
@@ -1308,10 +1309,85 @@ function custom_woocommerce_rest_prepare_shop_order_object($response)
         $product_id = $item['product_id'];
         $req->set_query_params(["id" => $product_id]);
         $res = $api->get_item($req);
-        if (is_wp_error($res)) {
-            $item["product_data"] = null;
-        } else {
-            $item["product_data"] = $res->get_data();
+        $item["product_data"] = is_wp_error($res) ? null : $res->get_data();
+
+        if (empty($item['product_data']['images'] ?? null)) {
+            global $wpdb;
+            $listing_id_from_booking = 0;
+
+            if (!empty($item['id'])) {
+                $meta_listing_id = wc_get_order_item_meta($item['id'], '_listing_id', true);
+                if (!empty($meta_listing_id)) {
+                    $listing_id_from_booking = (int) $meta_listing_id;
+                }
+            }
+            if ($listing_id_from_booking === 0) {
+
+                if (!isset($order_id)) {
+                    $order_id = isset($response->data['id']) ? absint($response->data['id']) : 0;
+                }
+
+                if ($order_id > 0) {
+                    $table_name = $wpdb->prefix . 'bookings_calendar';
+                    $listing_id_from_booking = (int)$wpdb->get_var(
+                        $wpdb->prepare("SELECT listing_id FROM {$table_name} WHERE order_id = %d ORDER BY id DESC LIMIT 1", $order_id)
+                    );
+                }
+            }
+
+            if ($listing_id_from_booking > 0) {
+                $attachment_ids = array();
+                $featured_id = (int)get_post_thumbnail_id($listing_id_from_booking);
+
+                if ($featured_id > 0) {
+                    $attachment_ids[] = $featured_id;
+                }
+
+                $gallery = get_post_meta($listing_id_from_booking, '_gallery', true);
+                if (is_array($gallery)) {
+                    foreach ($gallery as $key => $val) {
+                        $attachment_id = 0;
+                        if (is_numeric($key) && (int)$key > 0) {
+                            $attachment_id = (int)$key;
+                        } elseif (is_numeric($val) && (int)$val > 0) {
+                            $attachment_id = (int)$val;
+                        }
+
+                        if ($attachment_id > 0 && !in_array($attachment_id, $attachment_ids, true)) {
+                            $attachment_ids[] = $attachment_id;
+                        }
+                    }
+                }
+
+                $images = array();
+                foreach ($attachment_ids as $attachment_id) {
+                    $attachment = get_post($attachment_id);
+                    if (!$attachment) {
+                        continue;
+                    }
+
+                    $image_src = wp_get_attachment_image_url($attachment_id, 'full') ?: '';
+
+                    $images[] = array(
+                        'id' => $attachment_id,
+                        'date_created' => wc_rest_prepare_date_response($attachment->post_date, false),
+                        'date_created_gmt' => wc_rest_prepare_date_response($attachment->post_date_gmt, true),
+                        'date_modified' => wc_rest_prepare_date_response($attachment->post_modified, false),
+                        'date_modified_gmt' => wc_rest_prepare_date_response($attachment->post_modified_gmt, true),
+                        'src' => $image_src,
+                        'name' => get_the_title($attachment_id),
+                        'alt' => get_post_meta($attachment_id, '_wp_attachment_image_alt', true),
+                        'srcset' => wp_get_attachment_image_srcset($attachment_id, 'full') ?: '',
+                        'sizes' => wp_get_attachment_image_sizes($attachment_id) ?: '',
+                        'thumbnail' => wp_get_attachment_image_url($attachment_id) ?: $image_src,
+                    );
+                }
+
+                if (!isset($item['product_data']) || !is_array($item['product_data'])) {
+                    $item['product_data'] = array();
+                }
+                $item['product_data']['images'] = $images;
+            }
         }
         $line_items[] = $item;
 

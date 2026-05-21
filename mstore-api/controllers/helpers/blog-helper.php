@@ -23,7 +23,13 @@ class FlutterBlogHelper
 
     public function create_blog($request){
 		$title = sanitize_text_field($request['title']);
-		$content = sanitize_text_field($request['content']);
+        $content = null;
+        if (isset($request['content'])) {
+            if (!is_scalar($request['content'])) {
+                return new WP_Error("invalid_content", "Content must be a string.", array('status' => 400));
+            }
+            $content = wp_kses_post(wp_unslash((string) $request['content']));
+        }
 		$author = sanitize_text_field($request['author']);
 		$date = sanitize_text_field($request['date']);
 		$status = sanitize_text_field($request['status']);
