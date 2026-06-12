@@ -43,6 +43,7 @@ if ($data != null):
 
             $url = filter_has_var(INPUT_SERVER, 'REQUEST_URI') ? filter_input(INPUT_SERVER, 'REQUEST_URI') : '';
             header("Refresh: 0; url=$url");
+            exit;
         }
     }
     $woocommerce->session->set('refresh_totals', true);
@@ -502,7 +503,11 @@ if ($data != null):
     <?php wp_footer(); ?>
     <script type="text/javascript">
         setTimeout(function () {
-            document.getElementById('place_order').click();
+            var btn = document.getElementById('place_order');
+            if (btn && !btn.disabled) {
+                btn.disabled = true;
+                btn.click();
+            }
         }, 1500);
     </script>
     </body>

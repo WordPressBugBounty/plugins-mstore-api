@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.19.0
+ * Version: 4.20.0
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  *
@@ -17,54 +17,72 @@ defined('ABSPATH') or wp_die('No script kiddies please!');
 
 include plugin_dir_path(__FILE__) . "templates/class-mobile-detect.php";
 include plugin_dir_path(__FILE__) . "templates/class-rename-generate.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-app.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-user.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-home.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-booking.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-vendor-admin.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-woo.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-delivery.php";
+
+// ---------------------------------------------------------------------------
+// Always-loaded files: helpers, side-effect controllers, and the listing-REST
+// API controller (which registers 'init' hooks that must fire before rest_api_init).
+// ---------------------------------------------------------------------------
 include_once plugin_dir_path(__FILE__) . "functions/index.php";
 include_once plugin_dir_path(__FILE__) . "functions/utils.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-tera-wallet.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-paytm.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-paystack.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-flutterwave.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-myfatoorah.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-midtrans.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-modempay.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-paid-memberships-pro.php";
 include_once plugin_dir_path(__FILE__) . "controllers/listing-rest-api/class.api.fields.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-blog.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-wholesale.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-stripe.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-notification.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-thawani.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-expresspay.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-2c2p.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-cc-avenue.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-flow-flow.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-store-locator.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-composite-products.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-b2bking.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-review.php";
 include_once plugin_dir_path(__FILE__) . "controllers/helpers/firebase-message-helper.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-fib.php";
 include_once plugin_dir_path(__FILE__) . "controllers/helpers/firebase-phone-auth-helper.php";
 include_once plugin_dir_path(__FILE__) . "controllers/helpers/pure-taxonomies-helper.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-auction.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-iyzico.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-phonepe.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-cashfree.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-points-offline-store.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-smart-cod.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-discount-rules.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-checkout.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-razorpay.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-fibo-search.php";
 include_once plugin_dir_path(__FILE__) . "controllers/helpers/fibosearch-woo-rest-integration.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-paypal.php";
-include_once plugin_dir_path(__FILE__) . "controllers/flutter-rental.php";
+// Side-effect controllers: register hooks that must fire on non-REST requests too.
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-review.php";           // duplicate_comment_id hook
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-points-offline-store.php"; // wc_points_rewards_event_description hook
+include_once plugin_dir_path(__FILE__) . "controllers/flutter-smart-cod.php";        // woocommerce_order_after_calculate_totals hook
+
+// ---------------------------------------------------------------------------
+// Pure-REST controllers: deferred to rest_api_init (priority 0) so they are
+// only loaded when an actual REST API request is being processed.  The
+// constructors inside each file call add_action('rest_api_init', ..., 10), which
+// still fires within the same rest_api_init cycle because priority 10 > 0.
+// ---------------------------------------------------------------------------
+add_action('rest_api_init', 'mstore_load_rest_controllers', 0);
+function mstore_load_rest_controllers()
+{
+    $p = plugin_dir_path(__FILE__);
+    include_once $p . "controllers/flutter-app.php";
+    include_once $p . "controllers/flutter-user.php";
+    include_once $p . "controllers/flutter-home.php";
+    include_once $p . "controllers/flutter-booking.php";
+    include_once $p . "controllers/flutter-vendor-admin.php";
+    include_once $p . "controllers/flutter-woo.php";
+    include_once $p . "controllers/flutter-delivery.php";
+    include_once $p . "controllers/flutter-tera-wallet.php";
+    include_once $p . "controllers/flutter-paytm.php";
+    include_once $p . "controllers/flutter-paystack.php";
+    include_once $p . "controllers/flutter-flutterwave.php";
+    include_once $p . "controllers/flutter-myfatoorah.php";
+    include_once $p . "controllers/flutter-midtrans.php";
+    include_once $p . "controllers/flutter-modempay.php";
+    include_once $p . "controllers/flutter-paid-memberships-pro.php";
+    include_once $p . "controllers/flutter-blog.php";
+    include_once $p . "controllers/flutter-wholesale.php";
+    include_once $p . "controllers/flutter-stripe.php";
+    include_once $p . "controllers/flutter-notification.php";
+    include_once $p . "controllers/flutter-thawani.php";
+    include_once $p . "controllers/flutter-expresspay.php";
+    include_once $p . "controllers/flutter-2c2p.php";
+    include_once $p . "controllers/flutter-cc-avenue.php";
+    include_once $p . "controllers/flutter-flow-flow.php";
+    include_once $p . "controllers/flutter-store-locator.php";
+    include_once $p . "controllers/flutter-composite-products.php";
+    include_once $p . "controllers/flutter-b2bking.php";
+    include_once $p . "controllers/flutter-fib.php";
+    include_once $p . "controllers/flutter-auction.php";
+    include_once $p . "controllers/flutter-iyzico.php";
+    include_once $p . "controllers/flutter-phonepe.php";
+    include_once $p . "controllers/flutter-cashfree.php";
+    include_once $p . "controllers/flutter-discount-rules.php";
+    include_once $p . "controllers/flutter-checkout.php";
+    include_once $p . "controllers/flutter-razorpay.php";
+    include_once $p . "controllers/flutter-fibo-search.php";
+    include_once $p . "controllers/flutter-paypal.php";
+    include_once $p . "controllers/flutter-rental.php";
+}
 
 if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
     require __DIR__ . '/vendor/autoload.php';
@@ -72,7 +90,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.19.0';
+    public $version = '4.20.0';
 
     public function __construct()
     {
@@ -103,7 +121,6 @@ class MstoreCheckOut
             include_once plugin_dir_path(__FILE__) . "controllers/flutter-order.php";
             include_once plugin_dir_path(__FILE__) . "controllers/flutter-multi-vendor.php";
             include_once plugin_dir_path(__FILE__) . "controllers/flutter-vendor.php";
-            include_once plugin_dir_path(__FILE__) . "controllers/helpers/delivery-wcfm-helper.php";
             include_once plugin_dir_path(__FILE__) . "controllers/helpers/delivery-wcfm-helper.php";
             include_once plugin_dir_path(__FILE__) . "controllers/helpers/vendor-admin-woo-helper.php";
             include_once plugin_dir_path(__FILE__) . "controllers/helpers/vendor-admin-wcfm-helper.php";
@@ -230,17 +247,6 @@ class MstoreCheckOut
         //WCFM - WooCommerce Frontend Manager - Delivery
         //Handle listen to assign delivery boy on the website
         add_action( 'wcfmd_after_delivery_boy_assigned', array($this, 'track_delivery_boy_assigned'), 400, 6 );
-
-        $path = get_template_directory() . "/templates";
-        if (!file_exists($path)) {
-            mkdir($path, 0777, true);
-        }
-        if (file_exists($path)) {
-            $templatePath = plugin_dir_path(__FILE__) . "templates/mstore-api-template.php";
-            if (!copy($templatePath, $path . "/mstore-api-template.php")) {
-                return 0;
-            }
-        }
     }
 
     public function wprc_add_flutter_api_endpoints($allowed_endpoints){
@@ -444,6 +450,39 @@ class MstoreCheckOut
             PRIMARY KEY  (id)
         ) $charset_collate;";
         $success = maybe_create_table($table_name, $sql);
+        $this->ensure_checkout_template_exists();
+    }
+
+    private function ensure_checkout_template_exists()
+    {
+        $path = get_stylesheet_directory() . '/templates';
+        if (!is_dir($path)) {
+            wp_mkdir_p($path);
+        }
+
+        if (!is_dir($path)) {
+            error_log('MStore API: failed to create active theme templates directory at ' . $path);
+            return false;
+        }
+
+        $templatePath = plugin_dir_path(__FILE__) . 'templates/mstore-api-template.php';
+        $targetPath = $path . '/mstore-api-template.php';
+
+        if (!is_readable($templatePath)) {
+            error_log('MStore API: checkout template source is missing or unreadable at ' . $templatePath);
+            return false;
+        }
+
+        if (file_exists($targetPath)) {
+            return true;
+        }
+
+        if (!copy($templatePath, $targetPath)) {
+            error_log('MStore API: failed to copy checkout template to ' . $targetPath);
+            return false;
+        }
+
+        return true;
     }
 }
 
@@ -518,22 +557,39 @@ function mstore_init()
     load_template(dirname(__FILE__) . '/templates/mstore-api-admin-page.php');
 }
 
-add_filter('woocommerce_rest_prepare_product_variation_object', 'custom_woocommerce_rest_prepare_product_variation_object', 20, 3);
-add_filter('woocommerce_rest_prepare_product_object', 'flutter_custom_change_product_response', 20, 3);
-add_filter('woocommerce_rest_prepare_product_review', 'custom_product_review', 20, 3);
-add_filter('woocommerce_rest_prepare_product_cat', 'custom_product_category', 20, 3);
-add_filter('woocommerce_rest_prepare_shop_order_object', 'flutter_custom_change_order_response', 20, 3);
-// Add image support for WordPress blog categories
-add_filter('rest_prepare_category', 'flutter_add_image_to_category', 20, 3);
-add_filter('woocommerce_rest_prepare_product_attribute', 'flutter_custom_change_product_attribute', 20, 3);
-add_filter('woocommerce_rest_prepare_product_tag', 'flutter_custom_change_product_taxonomy', 20, 3);
-add_filter('woocommerce_rest_prepare_product_brand', 'flutter_custom_change_product_taxonomy', 20, 3);
-add_filter('woocommerce_rest_product_object_query', 'flutter_custom_rest_product_object_query', 10, 2);
-add_filter('woocommerce_rest_product_tag_query', 'flutter_custom_rest_product_tag_query', 10, 2);
-add_filter('woocommerce_rest_product_brand_query', 'flutter_custom_rest_product_brand_query', 10, 2);
-add_filter('rest_product_collection_params', 'flutter_custom_rest_product_collection_params', 10, 1);
-add_filter('posts_pre_query', 'flutter_custom_posts_pre_query', 10, 2);
-add_filter('found_posts', 'flutter_custom_found_posts', 20, 2);
+// Register Woo/REST response filters only when a REST request is actually being processed.
+// Previously these were registered globally, causing WordPress to invoke them on every
+// page load, admin request, and cron job even when no REST call was made.
+add_action('rest_api_init', 'mstore_register_rest_filters');
+function mstore_register_rest_filters()
+{
+    add_filter('woocommerce_rest_prepare_product_variation_object', 'custom_woocommerce_rest_prepare_product_variation_object', 20, 3);
+    add_filter('woocommerce_rest_prepare_product_object', 'flutter_custom_change_product_response', 20, 3);
+    add_filter('woocommerce_rest_prepare_product_review', 'custom_product_review', 20, 3);
+    add_filter('woocommerce_rest_prepare_product_cat', 'custom_product_category', 20, 3);
+    add_filter('woocommerce_rest_prepare_shop_order_object', 'custom_woocommerce_rest_prepare_shop_order_object', 10, 1);
+    add_filter('woocommerce_rest_prepare_shop_order_object', 'flutter_custom_change_order_response', 20, 3);
+    // Exclude checkout-draft from REST API order listing.
+    // HPOS (WooCommerce 7+) expands 'any' status using wc_get_order_statuses(), so we
+    // filter that function to remove checkout-draft only during REST API requests.
+    add_filter('wc_order_statuses', 'flutter_remove_draft_from_order_statuses');
+    // Add image support for WordPress blog categories
+    add_filter('rest_prepare_category', 'flutter_add_image_to_category', 20, 3);
+    add_filter('woocommerce_rest_prepare_product_attribute', 'flutter_custom_change_product_attribute', 20, 3);
+    add_filter('woocommerce_rest_prepare_product_tag', 'flutter_custom_change_product_taxonomy', 20, 3);
+    add_filter('woocommerce_rest_prepare_product_brand', 'flutter_custom_change_product_taxonomy', 20, 3);
+    add_filter('woocommerce_rest_product_object_query', 'flutter_custom_rest_product_object_query', 10, 2);
+    add_filter('woocommerce_rest_product_tag_query', 'flutter_custom_rest_product_tag_query', 10, 2);
+    add_filter('woocommerce_rest_product_brand_query', 'flutter_custom_rest_product_brand_query', 10, 2);
+    add_filter('rest_product_collection_params', 'flutter_custom_rest_product_collection_params', 10, 1);
+    add_filter('posts_pre_query', 'flutter_custom_posts_pre_query', 10, 2);
+    add_filter('found_posts', 'flutter_custom_found_posts', 20, 2);
+}
+function flutter_remove_draft_from_order_statuses($statuses)
+{
+    unset($statuses['wc-checkout-draft']);
+    return $statuses;
+}
 
 /**
  * WooCommerce REST API: Random sorting for products.
@@ -1014,16 +1070,28 @@ function flutter_custom_found_posts($found_posts, $query)
 // Prepare data before checkout by webview
 function flutter_prepare_checkout()
 {
-
-    if(empty($_GET) && isset($_SERVER['HTTP_REFERER'])){
-		$url_components = parse_url($_SERVER['HTTP_REFERER']);
+    // Early exit: Only process if checkout parameters are present
+    $has_checkout_params = isset($_GET['mobile']) || isset($_GET['code']) || isset($_GET['cookie']);
+    
+    // Only parse referer as fallback if $_GET is truly empty (preserves legitimate query args)
+    if (!$has_checkout_params && empty($_GET) && isset($_SERVER['HTTP_REFERER'])) {
+        $url_components = parse_url($_SERVER['HTTP_REFERER']);
         if (isset($url_components['query'])) {
             parse_str($url_components['query'], $params);
-            if(!empty($params)){
-                $_GET = $params;
+            // Extract only the checkout-related keys from referer; don't overwrite all $_GET
+            foreach (['mobile', 'code', 'cookie'] as $key) {
+                if (isset($params[$key])) {
+                    $_GET[$key] = $params[$key];
+                }
             }
+            $has_checkout_params = isset($_GET['mobile']) || isset($_GET['code']) || isset($_GET['cookie']);
         }
-	}
+    }
+    
+    // Exit early if no checkout-related parameters found - prevents database thrashing on regular page loads
+    if (!$has_checkout_params) {
+        return;
+    }
 
     if (isset($_GET['mobile']) && isset($_GET['code'])) {
 
@@ -1046,77 +1114,34 @@ function flutter_prepare_checkout()
             $userId = validateCookieLogin($data['token']);
             if(!is_wp_error($userId)){
                 if (isset($billing)) {
-                    if(isset($billing["first_name"]) && !empty($billing["first_name"])){
-                        update_user_meta($userId, 'billing_first_name', $billing["first_name"]);
-                        update_user_meta($userId, 'shipping_first_name', $billing["first_name"]);
-                    }
-                    if(isset($billing["last_name"]) && !empty($billing["last_name"])){
-                        update_user_meta($userId, 'billing_last_name', $billing["last_name"]);
-                        update_user_meta($userId, 'shipping_last_name', $billing["last_name"]);
-                    }
-                    if(isset($billing["company"]) && !empty($billing["company"])){
-                        update_user_meta($userId, 'billing_company', $billing["company"]);
-                        update_user_meta($userId, 'shipping_company', $billing["company"]);
-                    }
-                    if(isset($billing["address_1"]) && !empty($billing["address_1"])){
-                        update_user_meta($userId, 'billing_address_1', $billing["address_1"]);
-                        update_user_meta($userId, 'shipping_address_1', $billing["address_1"]);
-                    }
-                    if(isset($billing["address_2"]) && !empty($billing["address_2"])){
-                        update_user_meta($userId, 'billing_address_2', $billing["address_2"]);
-                        update_user_meta($userId, 'shipping_address_2', $billing["address_2"]);
-                    }
-                    if(isset($billing["city"]) && !empty($billing["city"])){
-                        update_user_meta($userId, 'billing_city', $billing["city"]);
-                        update_user_meta($userId, 'shipping_city', $billing["city"]);
-                    }
-                    if(isset($billing["state"]) && !empty($billing["state"])){
-                        update_user_meta($userId, 'billing_state', $billing["state"]);
-                        update_user_meta($userId, 'shipping_state', $billing["state"]);
-                    }
-                    if(isset($billing["postcode"]) && !empty($billing["postcode"])){
-                        update_user_meta($userId, 'billing_postcode', $billing["postcode"]);
-                        update_user_meta($userId, 'shipping_postcode', $billing["postcode"]);
-                    }
-                    if(isset($billing["country"]) && !empty($billing["country"])){
-                        update_user_meta($userId, 'billing_country', $billing["country"]);
-                        update_user_meta($userId, 'shipping_country', $billing["country"]);
-                    }
-                    if(isset($billing["email"]) && !empty($billing["email"])){
-                        update_user_meta($userId, 'billing_email', $billing["email"]);
-                        update_user_meta($userId, 'shipping_email', $billing["email"]);
-                    }
-                    if(isset($billing["phone"]) && !empty($billing["phone"])){
-                        update_user_meta($userId, 'billing_phone', $billing["phone"]);
-                        update_user_meta($userId, 'shipping_phone', $billing["phone"]);
+                    // Batch update user meta to reduce database queries
+                    $user_meta = get_user_meta($userId);
+                    $billing_fields = array('first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country', 'email', 'phone');
+                    foreach ($billing_fields as $field) {
+                        if (isset($billing[$field]) && !empty($billing[$field])) {
+                            // Only update if value has changed (reduces unnecessary DB writes)
+                            $current_billing = isset($user_meta['billing_' . $field][0]) ? $user_meta['billing_' . $field][0] : '';
+                            if ($current_billing !== $billing[$field]) {
+                                update_user_meta($userId, 'billing_' . $field, $billing[$field]);
+                            }
+                            $current_shipping = isset($user_meta['shipping_' . $field][0]) ? $user_meta['shipping_' . $field][0] : '';
+                            if ($current_shipping !== $billing[$field]) {
+                                update_user_meta($userId, 'shipping_' . $field, $billing[$field]);
+                            }
+                        }
                     }
                 } else {
-                    $billing = [];
-                    $shipping = [];
-
-                    $billing["first_name"] = get_user_meta($userId, 'billing_first_name', true);
-                    $billing["last_name"] = get_user_meta($userId, 'billing_last_name', true);
-                    $billing["company"] = get_user_meta($userId, 'billing_company', true);
-                    $billing["address_1"] = get_user_meta($userId, 'billing_address_1', true);
-                    $billing["address_2"] = get_user_meta($userId, 'billing_address_2', true);
-                    $billing["city"] = get_user_meta($userId, 'billing_city', true);
-                    $billing["state"] = get_user_meta($userId, 'billing_state', true);
-                    $billing["postcode"] = get_user_meta($userId, 'billing_postcode', true);
-                    $billing["country"] = get_user_meta($userId, 'billing_country', true);
-                    $billing["email"] = get_user_meta($userId, 'billing_email', true);
-                    $billing["phone"] = get_user_meta($userId, 'billing_phone', true);
-
-                    $shipping["first_name"] = get_user_meta($userId, 'shipping_first_name', true);
-                    $shipping["last_name"] = get_user_meta($userId, 'shipping_last_name', true);
-                    $shipping["company"] = get_user_meta($userId, 'shipping_company', true);
-                    $shipping["address_1"] = get_user_meta($userId, 'shipping_address_1', true);
-                    $shipping["address_2"] = get_user_meta($userId, 'shipping_address_2', true);
-                    $shipping["city"] = get_user_meta($userId, 'shipping_city', true);
-                    $shipping["state"] = get_user_meta($userId, 'shipping_state', true);
-                    $shipping["postcode"] = get_user_meta($userId, 'shipping_postcode', true);
-                    $shipping["country"] = get_user_meta($userId, 'shipping_country', true);
-                    $shipping["email"] = get_user_meta($userId, 'shipping_email', true);
-                    $shipping["phone"] = get_user_meta($userId, 'shipping_phone', true);
+                    // Batch retrieve user meta instead of 22 individual queries
+                    $user_meta = get_user_meta($userId);
+                    $billing_fields = array('first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country', 'email', 'phone');
+                    
+                    $billing = array();
+                    $shipping = array();
+                    
+                    foreach ($billing_fields as $field) {
+                        $billing[$field] = isset($user_meta['billing_' . $field][0]) ? $user_meta['billing_' . $field][0] : '';
+                        $shipping[$field] = isset($user_meta['shipping_' . $field][0]) ? $user_meta['shipping_' . $field][0] : '';
+                    }
 
                     if (isset($billing["first_name"]) && !isset($shipping["first_name"])) {
                         $shipping = $billing;
@@ -1276,6 +1301,10 @@ function flutter_prepare_checkout()
 }
 
 function set_author_in_for_vendor_staff( $query ) {
+    // Only relevant in admin context for Dokan vendor staff — skip all front-end and REST requests early
+    if ( ! is_admin() ) {
+        return;
+    }
     global $post;
     if ( class_exists('WeDevs_Dokan') && dokan()->is_pro_exists() && isset( $query->query['post_type'] ) && $query->query['post_type'] === 'global_product_addon' && $post != null ) {
         $vendor        = dokan_get_vendor_by_product( $post->ID );
@@ -1296,7 +1325,6 @@ function set_author_in_for_vendor_staff( $query ) {
 }
 
 // Add product image to order
-add_filter('woocommerce_rest_prepare_shop_order_object', 'custom_woocommerce_rest_prepare_shop_order_object', 10, 1);
 function custom_woocommerce_rest_prepare_shop_order_object($response)
 {
     if (empty($response->data) || empty($response->data['line_items'])) {

@@ -149,6 +149,22 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
         return false;
     }
 
+    function get_items($request)
+    {
+        // Exclude checkout-draft orders (created automatically by WooCommerce when loading checkout page)
+        if (empty($request['status'])) {
+            add_filter('woocommerce_rest_orders_prepare_object_query', function ($args) {
+                if (isset($args['post_status']) && is_array($args['post_status'])) {
+                    $args['post_status'] = array_diff($args['post_status'], ['wc-checkout-draft', 'checkout-draft']);
+                } elseif (isset($args['status']) && is_array($args['status'])) {
+                    $args['status'] = array_diff($args['status'], ['wc-checkout-draft', 'checkout-draft']);
+                }
+                return $args;
+            });
+        }
+        return parent::get_items($request);
+    }
+
     function create_new_order($request)
     {
         $params = $request->get_body_params();
@@ -286,6 +302,45 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
                 if (isset($shipping["phone"]) && !empty($shipping["phone"])) {
                     update_user_meta($user_id, 'shipping_phone', $shipping["phone"]);
                 }
+            }
+        }
+
+        // B2BKing price filters are NOT registered during REST API bootstrap because
+        // the user is unauthenticated at plugins_loaded/init time. Inject correct B2B
+        // prices into the request before create_item() so WooCommerce uses them directly,
+        // avoiding a costly post-creation recalculation.
+        if (class_exists('B2bking') && get_current_user_id() && isset($params['line_items'])) {
+            $user_id     = get_current_user_id();
+            $b2b_user_id = b2bking()->get_top_parent_account($user_id);
+            $group_id    = apply_filters('b2bking_b2b_group_for_pricing', b2bking()->get_user_group($b2b_user_id), $b2b_user_id);
+            $is_b2b      = get_user_meta($b2b_user_id, 'b2bking_b2buser', true) === 'yes';
+
+            if ($is_b2b && $group_id) {
+                foreach ($params['line_items'] as &$line_item) {
+                    $product_id = $line_item['product_id'] ?? 0;
+                    if (!$product_id) continue;
+                    $variation_id = !empty($line_item['variation_id']) ? (int) $line_item['variation_id'] : 0;
+                    $product = wc_get_product($variation_id ?: $product_id);
+                    if (!$product) continue;
+
+                    // B2BKing stores group prices on the parent product ID, not the variation.
+                    $price_post_id = $product->get_parent_id() ?: $product->get_id();
+                    $b2b_reg  = b2bking()->tofloat(get_post_meta($price_post_id, 'b2bking_regular_product_price_group_' . $group_id, true));
+                    $b2b_sale = b2bking()->tofloat(get_post_meta($price_post_id, 'b2bking_sale_product_price_group_' . $group_id, true));
+                    if (empty($b2b_reg) && empty($b2b_sale)) continue;
+
+                    $uses_sale  = $product->is_on_sale() && !empty($b2b_sale);
+                    $b2b_price  = (float) ($uses_sale ? $b2b_sale : $b2b_reg);
+                    $qty        = $line_item['quantity'] ?? 1;
+                    $subtotal   = wc_get_price_excluding_tax($product, ['qty' => $qty, 'price' => $b2b_price]);
+
+                    $line_item['subtotal'] = $subtotal;
+                    $line_item['total']    = $subtotal;
+                }
+                unset($line_item);
+                // WP_REST_Request reads JSON via get_json_params() which parses the raw body.
+                // Must replace the raw body so $request['line_items'] reflects the updated prices.
+                $request->set_body(wp_json_encode($params));
             }
         }
 

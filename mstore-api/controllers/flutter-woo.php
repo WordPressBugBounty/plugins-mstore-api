@@ -1526,7 +1526,9 @@ class FlutterWoo extends FlutterBaseController
         if (isset($request['lang'])) {
             $lang = sanitize_text_field($request['lang']);
         }
-        $page = ($page - 1) * $per_page;
+        $page = max(1, absint($page));
+        $per_page = max(1, absint($per_page));
+        $offset = ($page - 1) * $per_page;
 
         $postmeta_table = $wpdb->prefix . "postmeta";
         $post_table = $wpdb->prefix . "posts";
@@ -1537,10 +1539,8 @@ class FlutterWoo extends FlutterBaseController
         $sql .= " WHERE $postmeta_table.meta_key='_mstore_video_url' AND $postmeta_table.meta_value IS NOT NULL AND $postmeta_table.meta_value <> ''";
         $sql .= " AND $post_table.post_type = 'product' AND $post_table.post_status = 'publish'";
         $sql .= " ORDER BY $post_table.post_modified DESC";
-        if($lang == null){
-            $sql .= " LIMIT %d OFFSET %d";
-            $sql = $wpdb->prepare($sql, $per_page, $page);
-        }
+        $sql .= " LIMIT %d OFFSET %d";
+        $sql = $wpdb->prepare($sql, $per_page, $offset);
        
         $items = $wpdb->get_results($sql);
 

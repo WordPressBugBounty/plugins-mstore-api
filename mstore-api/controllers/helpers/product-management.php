@@ -336,6 +336,7 @@ class ProductManagementHelper
         if ($request["status"] != null) {
             $requestStatus = sanitize_text_field($request["status"]);
         }
+
 		$is_create_product = false;
 
 		$id = sanitize_text_field($request["id"]);
@@ -349,9 +350,13 @@ class ProductManagementHelper
         $brands = isset($request['brands']) ? sanitize_text_field($request['brands']) : null;
 
         $regular_price = sanitize_text_field($request['regular_price']);
-        $sale_price = sanitize_text_field($request['sale_price']);
+        $has_sale_price = isset($request['sale_price']) || (method_exists($request, 'get_param') && null !== $request->get_param('sale_price'));
+        $sale_price = $has_sale_price ? sanitize_text_field($request['sale_price']) : '';
+        $date_on_sale_from = isset($request['date_on_sale_from']) ? sanitize_text_field($request['date_on_sale_from']) : '';
+        $date_on_sale_to = isset($request['date_on_sale_to']) ? sanitize_text_field($request['date_on_sale_to']) : '';
         $stock_quantity = sanitize_text_field($request['stock_quantity']);
         $manage_stock  = sanitize_text_field($request['manage_stock']);
+        $catalog_visibility = isset($request['catalog_visibility']) ? sanitize_text_field($request['catalog_visibility']) : null;
 
         $weight = isset($request['weight']) ? sanitize_text_field($request['weight']) : '';
         $length = isset($request['length']) ? sanitize_text_field($request['length']) : '';
@@ -478,8 +483,35 @@ class ProductManagementHelper
                         $product->set_regular_price($regular_price);
                     }
                     // Sale Price.
-                    if (isset($sale_price) && !empty($sale_price)) {
-                        $product->set_sale_price($sale_price);
+                    if ($has_sale_price) {
+                        if (!empty($sale_price)) {
+                            $product->set_sale_price($sale_price);
+                        } else {
+                            // Clear full sale state when app sends empty sale_price.
+                            $product->set_sale_price('');
+                            $product->set_date_on_sale_from('');
+                            $product->set_date_on_sale_to('');
+                        }
+                    }
+
+                    // Sale dates are applied only when sale_price is not explicitly cleared.
+                    if (!$has_sale_price || !empty($sale_price)) {
+                        // Sale From Date.
+                        if (isset($request['date_on_sale_from'])) {
+                            if (!empty($date_on_sale_from)) {
+                                $product->set_date_on_sale_from($date_on_sale_from);
+                            } else {
+                                $product->set_date_on_sale_from('');
+                            }
+                        }
+                        // Sale To Date.
+                        if (isset($request['date_on_sale_to'])) {
+                            if (!empty($date_on_sale_to)) {
+                                $product->set_date_on_sale_to($date_on_sale_to);
+                            } else {
+                                $product->set_date_on_sale_to('');
+                            }
+                        }
                     }
                 }
                 // Description
@@ -499,6 +531,14 @@ class ProductManagementHelper
                     }
                 }
                 $product->set_stock_status($stock_status);
+
+                // Catalog visibility.
+                if (!is_null($catalog_visibility)) {
+                    $catalog_visibility = strtolower($catalog_visibility);
+                    if (in_array($catalog_visibility, ['visible', 'catalog', 'search', 'hidden'], true)) {
+                        $product->set_catalog_visibility($catalog_visibility);
+                    }
+                }
 
                 // Stock data.
                 if ("yes" === get_option("woocommerce_manage_stock")) {

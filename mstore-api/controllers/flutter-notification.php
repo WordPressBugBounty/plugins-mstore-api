@@ -66,26 +66,82 @@ class FlutterNotification extends FlutterBaseController
 
     public function test_push_notification()
     {
-        $json = file_get_contents('php://input');
-        $params = json_decode($json);
-        $email = $params->email;
-        $is_manager = $params->is_manager;
-        $is_delivery = $params->is_delivery;
-        $user = get_user_by('email', $email);
-        $user_id = $user->ID;
-        $is_onesignal = $params->is_onesignal;
-        if($is_onesignal){
-            $status = one_signal_push_notification("Fluxstore", "Test push notification", array($user_id));
-            return ['status' => $status];
+        try {
+            $json = file_get_contents('php://input');
+            $params = json_decode($json);
+
+            // Validate input
+            if (!isset($params->email)) {
+                return $this->sendError('missing_email', 'Email is required', 400);
+            }
+
+            $email = $params->email;
+            $is_manager = isset($params->is_manager) ? $params->is_manager : false;
+            $is_delivery = isset($params->is_delivery) ? $params->is_delivery : false;
+
+            // Get user
+            $user = get_user_by('email', $email);
+            if (!$user) {
+                return $this->sendError('notification_request_failed', 'Unable to process notification request', 404);
+            }
+
+            $user_id = $user->ID;
+            $is_onesignal = isset($params->is_onesignal) ? $params->is_onesignal : false;
+
+            // Check if OneSignal
+            if($is_onesignal){
+                // Check if function exists
+                if (!function_exists('one_signal_push_notification')) {
+                    return $this->sendError('function_not_found', 'one_signal_push_notification function not found. Make sure functions/index.php is loaded.', 500);
+                }
+
+                // Check if OneSignal plugin is active
+                if (!is_plugin_active('onesignal-free-web-push-notifications/onesignal.php')) {
+                    return $this->sendError('plugin_not_active', 'OneSignal plugin is not active', 400);
+                }
+
+                // Check if OneSignal is configured (using WordPress options directly)
+                $onesignal_wp_settings = get_option('OneSignalWPSetting');
+                if (empty($onesignal_wp_settings) || empty($onesignal_wp_settings['app_id']) || empty($onesignal_wp_settings['app_rest_api_key'])) {
+                    return $this->sendError('onesignal_not_configured', 'OneSignal App ID or API Key is not configured in WordPress Settings', 400);
+                }
+
+                $result = one_signal_push_notification("Fluxstore", "Test push notification", array($user_id));
+
+                $response = [
+                    'success' => $result['success'],
+                    'message' => $result['success'] ? 'Notification sent successfully' : ($result['message'] ?: "Failed to send notification"),
+                    'user_id' => $user_id,
+                    'user_email' => $email,
+                    'notification_id' => $result['notification_id']
+                ];
+
+                if (!empty($result['errors'])) {
+                    $response['errors'] = $result['errors'];
+                }
+
+                return $response;
+            }
+
+            // Firebase notification
+            if ($is_manager) {
+                pushNotificationForVendor($user_id, "Fluxstore", "Test push notification");
+            } else if ($is_delivery) {
+                pushNotificationForDeliveryBoy($user_id, "Fluxstore", "Test push notification");
+            } else {
+                pushNotificationForUser($user_id, "Fluxstore", "Test push notification");
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Notification sent',
+                'user_id' => $user_id,
+                'type' => 'firebase'
+            ];
+
+        } catch (\Throwable $e) {
+            return $this->sendError('exception', $e->getMessage(), 500);
         }
-        if (isset($is_manager)) {
-            pushNotificationForVendor($user_id, "Fluxstore", "Test push notification");
-        }else if (isset($is_delivery)) {
-             pushNotificationForDeliveryBoy($user_id, "Fluxstore", "Test push notification");
-        }else {
-            pushNotificationForUser($user_id, "Fluxstore", "Test push notification");
-        }
-        return [];
     }
 
     function test_push_notification_created_order(){

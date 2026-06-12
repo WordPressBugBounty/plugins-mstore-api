@@ -74,13 +74,29 @@ class FirebaseMessageHelper
     }
 
     public static function get_access_token($config){
+        // Cache access tokens to avoid regenerating on every notification
+        // Firebase tokens are valid for ~1 hour, so cache for 45 minutes
+        $cache_key = 'mstore_firebase_token_' . md5(serialize($config));
+        $cached_token = get_transient($cache_key);
+        
+        if ($cached_token !== false) {
+            return $cached_token;
+        }
+        
         $sa = new ServiceAccountCredentials(
             'https://www.googleapis.com/auth/firebase.messaging',
             $config,
         );
         $token = $sa->fetchAuthToken();
-    
-        $access_token = $token['access_token'];
+        $access_token = isset($token['access_token']) ? $token['access_token'] : false;
+
+        if (empty($access_token)) {
+            return false;
+        }
+        
+        // Cache for 45 minutes (2700 seconds)
+        set_transient($cache_key, $access_token, 2700);
+        
         return $access_token;
     }
 

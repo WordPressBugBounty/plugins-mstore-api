@@ -2,7 +2,7 @@
 Contributors:      inspireui
 Tags:              flutter, app builder, app creator, mobile app builder, woocommerce app
 Requires at least: 4.4
-Stable tag:        4.19.0
+Stable tag:        4.20.0
 Tested up to:      7.0
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
@@ -48,6 +48,22 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 1. Click Install.
 
 == Changelog ==
+= 4.20.0 =
+  * Add tiered_prices endpoint
+  * Add catalog visibility option in product create/update
+  * Add date on sale support in product create/update
+  * Add vendor auto-approval selling configuration
+  * Support B2BKing (login, orders, guest checkout, user-based product visibility)
+  * Support user registration without all required fields
+  * Improve performance and reduce overhead for REST and checkout processes
+  * Improve OneSignal push notification error handling
+  * Fix video pagination not working when a language is set
+  * Fix sale price not being removed and sale dates clearing on product update
+  * Fix products incorrectly visible to all users with visibility settings
+  * Fix missing notification when admin changes order status (OneSignal)
+  * Fix OneSignal restricted external IDs with backward-compatible prefix
+  * Security: Restrict vendor self-registration to a safe role whitelist
+
 = 4.19.0 =
   * Add Cashfree payment integration
   * Add get_location_fields endpoint

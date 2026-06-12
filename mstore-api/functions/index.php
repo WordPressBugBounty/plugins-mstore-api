@@ -51,9 +51,14 @@ function one_signal_push_notification($title = '', $message = '', $user_ids = ar
         return false;
     }
 
-    $onesignal_wp_settings = OneSignal::get_onesignal_settings();
-    $app_id = $onesignal_wp_settings['app_id'];
-    $api_key = $onesignal_wp_settings['app_rest_api_key'];
+    // Get OneSignal settings directly from WordPress options
+    $onesignal_wp_settings = get_option('OneSignalWPSetting');
+    if (empty($onesignal_wp_settings)) {
+        return false;
+    }
+
+    $app_id = isset($onesignal_wp_settings['app_id']) ? $onesignal_wp_settings['app_id'] : '';
+    $api_key = isset($onesignal_wp_settings['app_rest_api_key']) ? $onesignal_wp_settings['app_rest_api_key'] : '';
 
     if(empty($app_id) || empty($api_key)){
         return false;
@@ -67,8 +72,41 @@ function one_signal_push_notification($title = '', $message = '', $user_ids = ar
     );
 
 	$external_ids = array();
-	foreach($user_ids as $id){
-		$external_ids[] = strval($id);
+
+    // OneSignal blocks certain external IDs (e.g. "0", "1", "null")
+    // Error: "Unable to create subscription: external_id is blocked, please use a different ID"
+    // Add a prefix only for restricted IDs to preserve backward compatibility
+	$restricted_ids = [
+        // Numeric values
+        '0', '1', '-1',
+
+        // Null variants
+        'null', 'NULL',
+
+        // Special values
+        'NA', 'NaN',
+        'UNQUALIFIED', 'all',
+
+        // UUID empty
+        '00000000-0000-0000-0000-000000000000',
+
+        // Common placeholders
+        '-', 'none', 'ok',
+        '123ABC', 'unknown',
+        'INVALID_USER', 'undefined', 'not set'
+    ];
+
+    foreach ($user_ids as $id) {
+        $id_string = strval($id);
+
+        // Ignore empty or null values
+		if ($id_string === '' || $id === null) {
+			continue;
+		}
+
+        $external_ids[] = in_array($id_string, $restricted_ids, true)
+            ? 'user_' . $id_string // 1 → user_1
+            : $id_string; // 124 → 124 (unchanged)
 	}
 
     $fields = array(
@@ -80,6 +118,7 @@ function one_signal_push_notification($title = '', $message = '', $user_ids = ar
         'priority'=> "10",
         'existing_android_channel_id' => 'high_importance_channel',
         'include_external_user_ids' => $external_ids,
+        'channel_for_external_user_ids' => 'push',
         'contents' => $content,
         'headings' => $headings,
     );
@@ -95,7 +134,53 @@ function one_signal_push_notification($title = '', $message = '', $user_ids = ar
         'body' => $bodyAsJson,
       )
     );
-    return wp_remote_retrieve_response_code($response) == 200;
+
+    if (is_wp_error($response)) {
+        return array(
+            'success' => false,
+            'errors' => array($response->get_error_code()),
+            'message' => $response->get_error_message(),
+            'notification_id' => null,
+        );
+    }
+
+    $status_code = wp_remote_retrieve_response_code($response);
+    $body = wp_remote_retrieve_body($response);
+    $result = json_decode($body, true);
+
+    if (!is_array($result)) {
+        return array(
+            'success' => false,
+            'errors' => array('invalid_response'),
+            'message' => "OneSignal response is not valid JSON (HTTP {$status_code})",
+            'notification_id' => null,
+        );
+    }
+
+    $has_notification_id = isset($result['id']) && !empty($result['id']);
+    $errors = null;
+    if (isset($result['errors'])) {
+        $errors = is_array($result['errors']) ? $result['errors'] : array((string)$result['errors']);
+    }
+
+    $error_message = null;
+    if (!empty($errors)) {
+        $error_message = implode(', ', array_map('strval', $errors));
+    } elseif (isset($result['message']) && is_string($result['message']) && $result['message'] !== '') {
+        $error_message = $result['message'];
+    }
+
+    $success = $status_code == 200 && $has_notification_id;
+    if (!$success && empty($error_message)) {
+        $error_message = "OneSignal request failed with HTTP {$status_code}";
+    }
+
+    return array(
+        'success' => $success,
+        'errors' => $errors,
+        'message' => $error_message,
+        'notification_id' => $has_notification_id ? $result['id'] : null
+    );
 }
 
 function sendNotificationToUser($userId, $orderId, $previous_status, $next_status)
@@ -134,7 +219,7 @@ function trackOrderStatusChanged($id, $previous_status, $next_status)
 function _pushNotification($user_id, $title, $message, $meta_key, $data = array()){
     $is_notification_on = $meta_key == 'mstore_manager_device_token' || $meta_key == 'mstore_delivery_device_token';
     if (is_plugin_active('onesignal-free-web-push-notifications/onesignal.php')) {
-        _pushNotificationOneSignal($title,$message, $user_id, $is_notification_on);
+        _pushNotificationOneSignal($user_id, $title, $message, $is_notification_on);
     } else {
         $deviceToken = get_user_meta($user_id, $meta_key, true);
         if (isset($deviceToken) && $deviceToken != false) {

@@ -6,12 +6,12 @@ class FlutterBlogHelper
     {
         if (isset($request['url'])) {
             $url = $request['url'];
-            $product_id = url_to_postid($url);
-            if ($product_id) {
-                $post = get_post($product_id);
+            $post_id = url_to_postid($url);
+            if ($post_id) {
+                $post = get_post($post_id);
                 $controller = new WP_REST_Posts_Controller('post');
                 $req = new WP_REST_Request('GET');
-                $params = array('id' => $product_id);
+                $params = array('id' => $post_id);
                 $req->set_query_params($params);
                 $response = $controller->prepare_item_for_response($post, $req);
                 $data = $controller->prepare_response_for_collection($response);
