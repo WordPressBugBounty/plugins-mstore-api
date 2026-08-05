@@ -64,7 +64,7 @@ class DeliveryWooHelper
         $pending_count = 0;
         $total = 0;
 
-        if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('local-delivery-drivers-for-woocommerce-premium/local-delivery-drivers-for-woocommerce.php')) {
+        if (mstore_is_lddfw_active()) {
             global $wpdb;
 
             if ($this->is_hpos_enabled()) {
@@ -109,7 +109,7 @@ class DeliveryWooHelper
                 )));
             }
         }
-        else if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
+        else if (mstore_is_ddwc_active()) {
             global $wpdb;
             $table_1 = "{$wpdb->prefix}posts";
             $table_2 = "{$wpdb->prefix}postmeta";
@@ -149,7 +149,7 @@ class DeliveryWooHelper
         if(isset($order_id)){
             $order_id = sanitize_text_field($order_id);
             if(is_numeric($order_id)){
-                if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('local-delivery-drivers-for-woocommerce-premium/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
+                if (mstore_is_delivery_driver_plugin_active()) {
                     $order = wc_get_order($order_id);
                     return new WP_REST_Response(array(
                         'status' => 'success',
@@ -192,7 +192,7 @@ class DeliveryWooHelper
     {
         $api = new WC_REST_Orders_V1_Controller();
         $results = [];
-        if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('local-delivery-drivers-for-woocommerce-premium/local-delivery-drivers-for-woocommerce.php')) {
+        if (mstore_is_lddfw_active()) {
             $page = 1;
             $per_page = 10;
             if (isset($request['page'])) {
@@ -301,7 +301,7 @@ class DeliveryWooHelper
                 $results[] = $order;
             }
         }
-        else if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
+        else if (mstore_is_ddwc_active()) {
             $page = 1;
             $per_page = 10;
             if (isset($request['page'])) {
@@ -466,8 +466,53 @@ class DeliveryWooHelper
     }
 
 
-    function update_delivery_order($order_id)
+    /**
+     * Whether $user_id is the driver assigned to $order_id.
+     *
+     * Store managers keep blanket access; everyone else must match the
+     * lddfw_driverid recorded on the order - the same key get_delivery_orders()
+     * scopes its listing by, so a driver can only complete what they can see.
+     */
+    protected function driver_can_update_order($order_id, $user_id)
     {
+        $user_id = absint($user_id);
+        if (!$user_id) {
+            return false;
+        }
+
+        if (user_can($user_id, 'manage_woocommerce')) {
+            return true;
+        }
+
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return false;
+        }
+
+        $assigned_driver = absint($order->get_meta(self::META_KEY_LDDFW_DRIVER_ID, true));
+
+        return $assigned_driver > 0 && $assigned_driver === $user_id;
+    }
+
+    function update_delivery_order($order_id, $user_id = 0)
+    {
+        $order_id = absint($order_id);
+        $order_to_check = $order_id ? wc_get_order($order_id) : false;
+
+        if (!$order_to_check) {
+            return new WP_Error('order_not_found', 'Order not found.', array('status' => 404));
+        }
+
+        // The caller must be the driver this order is actually assigned to.
+        // Being *a* driver is not enough to complete somebody else's delivery.
+        if (!$this->driver_can_update_order($order_id, $user_id)) {
+            return new WP_Error(
+                'no_permission',
+                'This order is not assigned to you.',
+                array('status' => 403)
+            );
+        }
+
         $order = wc_update_order(array("order_id" => $order_id, "status" => "wc-completed"));
         if (is_wp_error($order)) {
             return new WP_REST_Response(array(
@@ -486,7 +531,7 @@ class DeliveryWooHelper
 
     function set_off_time($user_id, $is_available)
     {
-        if(is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('local-delivery-drivers-for-woocommerce-premium/local-delivery-drivers-for-woocommerce.php')) {
+        if (mstore_is_lddfw_active()) {
             $new_value = '1';  // Available
             $old_value = '0';
             if ($is_available !== 'true') {
@@ -504,7 +549,7 @@ class DeliveryWooHelper
                 'status' => 'success',
                 'response' => $meta_value,
             ), 200);
-        } else if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
+        } else if (mstore_is_ddwc_active()) {
             $new_value = 'on';
             $old_value = '';
             if($is_available !== 'true'){

@@ -279,7 +279,7 @@ class FlutterHome extends WP_REST_Controller
         $limit = (!isset($limit) || $limit == false) ? 10 : $limit;
         $limit = isset($layout['limit']) && is_int($layout['limit']) ? $layout['limit'] : $limit;
         $params['per_page'] = $limit;
-        $params['page'] = 0;
+        $params['page'] = 1;
         $params['is_all_data'] = $request->get_param('is_all_data') ?? false;
 	
         if (is_plugin_active('wc-multivendor-marketplace/wc-multivendor-marketplace.php')) {
@@ -303,7 +303,7 @@ class FlutterHome extends WP_REST_Controller
 
         $items = [];
         foreach ($products as $item) {
-            if($item['catalog_visibility'] !== 'hidden'){
+            if (($item['catalog_visibility'] ?? '') !== 'hidden') {
                 $items[] = $item;
             }
         }

@@ -63,10 +63,50 @@ class FlutterExpressPay extends FlutterBaseController
         $order_id = sanitize_text_field($body['order_id']);
         $transaction_id = sanitize_text_field($body['transaction_id']);
 
+        if (empty($order_id) || empty($transaction_id)) {
+            return new WP_Error('missing_parameters', 'Order ID and Transaction ID are required.', array('status' => 400));
+        }
+
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return new WP_Error('order_not_found', 'Order not found.', array('status' => 404));
+        }
+
+        // SECURITY CHECK 0: Authorise the caller against this specific order.
+        // These routes are otherwise gated only by the site-global purchase-code
+        // check, so nothing ties the caller to the order they name.
+        $key_check = mstore_api_check_payment_order_key($order, $body);
+        if (is_wp_error($key_check)) {
+            return $key_check;
+        }
+
+        // SECURITY CHECK 1: Prevent double processing
+        if (!$order->needs_payment()) {
+            return rest_ensure_response(['success' => true, 'message' => 'Order already processed.']);
+        }
+
+        // SECURITY CHECK 2: Replay Attack Prevention (HPOS Compatible)
+        $existing_orders = wc_get_orders(array(
+            'transaction_id' => $transaction_id,
+            'status'         => array('processing', 'completed', 'on-hold'),
+            'exclude'        => array($order_id),
+            'limit'          => 1,
+            'return'         => 'ids'
+        ));
+
+        if (!empty($existing_orders)) {
+            $order->add_order_note(sprintf('Security Alert: ExpressPay transaction ID %s already used for another order. Replay attack blocked.', $transaction_id));
+            return new WP_Error('replay_attack', 'This payment transaction was already used for another order.', array('status' => 403));
+        }
+
         $options  = get_option( 'woocommerce_shahbandrpay_settings');
-        $password = $options['password'];
-        $secret   = $options['secret'];
+        $password = isset($options['password']) ? $options['password'] : '';
+        $secret   = isset($options['secret']) ? $options['secret'] : '';
         $new_order_status = !empty($options['new_order_status']) ? $options['new_order_status'] : 'processing';
+
+        if (empty($password) || empty($secret)) {
+            return new WP_Error('expresspay_misconfigured', 'ExpressPay (ShahbandrPay) is not configured.', array('status' => 500));
+        }
 
         $hash = sha1(md5(strtoupper($transaction_id . $password)));
         $url = 'https://pay.expresspay.sa/api/v1/payment/status';
@@ -77,27 +117,105 @@ class FlutterExpressPay extends FlutterBaseController
             "hash" => $hash
         ];
 
-        $getter = curl_init($url); //init curl
-        curl_setopt($getter, CURLOPT_POST, 1); //post
-        curl_setopt($getter, CURLOPT_POSTFIELDS, json_encode($main_json)); //json
-        curl_setopt($getter, CURLOPT_HTTPHEADER, array('Content-Type:application/json')); //header
+        $getter = curl_init($url);
+        curl_setopt($getter, CURLOPT_POST, 1);
+        curl_setopt($getter, CURLOPT_POSTFIELDS, json_encode($main_json));
+        curl_setopt($getter, CURLOPT_HTTPHEADER, array('Content-Type:application/json'));
         curl_setopt($getter, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($getter, CURLOPT_TIMEOUT, 15);
 
         $result = curl_exec($getter);
+        $http_code = curl_getinfo($getter, CURLINFO_HTTP_CODE);
+        curl_close($getter);
+
+        if ($result === false || $http_code !== 200) {
+            $order->add_order_note('Security Alert: ExpressPay S2S verification request failed or returned HTTP ' . $http_code);
+            return new WP_Error('s2s_verification_failed', 'Could not verify payment with ExpressPay.', array('status' => 502));
+        }
 
         $response = json_decode($result, true);
 
-        if ( $response['status'] == 'settled' ) {
-            $order = wc_get_order($order_id);
-            update_post_meta( $order_id, 'trans_id', $transaction_id );
-            update_post_meta( $order_id, 'trans_date', $response['date'] );
+        // SECURITY CHECK 3: Validate Payment Status
+        if (isset($response['status']) && $response['status'] == 'settled') {
 
-            $order->update_status( $new_order_status, 'ShahbandrPay successfully paid');
-            $order->add_order_note( 'ShahbandrPay successfully paid' );
+            // SECURITY CHECK 4: Bind the transaction to THIS order's amount and currency.
+            //
+            // 'settled' on its own only proves the transaction is real, not that it
+            // paid for this order. Without this an attacker can settle a cheap order,
+            // withhold the payment_success call so it stays pending (and therefore
+            // out of the replay check above), then present that transaction id
+            // against an expensive order.
+            //
+            // ExpressPay echoes the fields card_checkout() submits (order_amount /
+            // order_currency); the alternatives are accepted so a response shape
+            // change does not silently disable the check.
+            $paid_amount   = $this->first_present($response, array('order_amount', 'amount', 'total'));
+            $paid_currency = $this->first_present($response, array('order_currency', 'currency'));
+
+            if ($paid_amount === null) {
+                // Fail closed: an unverifiable amount is exactly the case being exploited.
+                $order->add_order_note('Security Alert: ExpressPay status response carried no amount field, so the transaction could not be bound to this order. Payment not applied. Response keys: ' . esc_html(implode(', ', array_keys((array) $response))));
+                return new WP_Error('amount_unverifiable', 'Could not verify the paid amount with ExpressPay.', array('status' => 502));
+            }
+
+            $order_total = (float) $order->get_total();
+
+            if (abs($order_total - (float) $paid_amount) > 0.01) {
+                $order->add_order_note(sprintf(
+                    'Security Alert: ExpressPay amount mismatch. Order total: %s, Paid: %s. Order status unchanged.',
+                    esc_html($order_total),
+                    esc_html($paid_amount)
+                ));
+                return new WP_Error('amount_mismatch', 'Paid amount does not match order total.', array('status' => 400));
+            }
+
+            if ($paid_currency !== null
+                && strtoupper((string) $paid_currency) !== strtoupper($order->get_currency())) {
+                $order->add_order_note(sprintf(
+                    'Security Alert: ExpressPay currency mismatch. Order currency: %s, Paid: %s. Order status unchanged.',
+                    esc_html($order->get_currency()),
+                    esc_html($paid_currency)
+                ));
+                return new WP_Error('currency_mismatch', 'Paid currency does not match order currency.', array('status' => 400));
+            }
+
+            // All checks passed.
+            $order->payment_complete($transaction_id);
+            $order->add_order_note('ExpressPay Verified: S2S Payment successful.<br/>Transaction ID: ' . esc_html($transaction_id));
+            $order->update_meta_data('_expresspay_transaction_id', $transaction_id);
+            $order->save();
+
+            if ($order->get_status() !== $new_order_status) {
+                $order->update_status($new_order_status);
+            }
+
             return ['success' => true];
         } else {
-            return ['message' => $response['reason'] ?? 'expresspay error'];
+            $order->add_order_note('Security Alert: ExpressPay payment not settled. Status: ' . esc_html($response['status'] ?? 'unknown'));
+            return new WP_Error('payment_not_settled', $response['reason'] ?? 'ExpressPay payment failed.', array('status' => 400));
         }
+    }
+
+    /**
+     * Return the first key present and non-empty-string in $data, or null.
+     *
+     * @param array $data
+     * @param array $keys Candidate keys, in priority order.
+     * @return mixed|null
+     */
+    private function first_present($data, $keys)
+    {
+        if (!is_array($data)) {
+            return null;
+        }
+
+        foreach ($keys as $key) {
+            if (isset($data[$key]) && $data[$key] !== '') {
+                return $data[$key];
+            }
+        }
+
+        return null;
     }
 
     public function card_checkout($request)
@@ -120,7 +238,7 @@ class FlutterExpressPay extends FlutterBaseController
         $secret   = $options['secret'];
 
         global $woocommerce;
-    
+
         $order = new WC_Order($order_id);
         $user = $order->get_user();
         $user_id = $order->get_user_id();
@@ -143,7 +261,7 @@ class FlutterExpressPay extends FlutterBaseController
                 'email' => $email
             );
         }
-        
+
         $billing_address = array(
             'country' => $order->get_billing_country() ? $order->get_billing_country() : 'NA',
             'state' => $order->get_billing_state() ? $order->get_billing_state() : 'NA',
@@ -162,7 +280,7 @@ class FlutterExpressPay extends FlutterBaseController
             'amount' => $amount,
             'currency' => $currency,
         );
-        
+
         $card_number = str_replace(" ","",$card_number);
         if ($card_exp) {
             $exp_array = explode('/', $card_exp);
@@ -172,7 +290,7 @@ class FlutterExpressPay extends FlutterBaseController
             $month = '';
             $year = '';
         }
-        
+
         $hash = md5(strtoupper(strrev($email).$password.strrev(substr($card_number,0,6).substr($card_number,-4))));
 
         $data = [
@@ -224,11 +342,11 @@ class FlutterExpressPay extends FlutterBaseController
         }
 
         if ($response['result'] == 'SUCCESS' && $response['status'] == 'SETTLED') {
-                    
+
             $order->payment_complete($order_id);
             $order->update_status($new_order_status, 'ShahbandrPay successfully paid');
             $order->add_order_note( 'ShahbandrPay successfully paid' );
- 
+
             update_post_meta( $order_id, 'trans_id', $response['trans_id'] );
             update_post_meta( $order_id, 'trans_date', $response['trans_date'] );
             update_post_meta( $order_id, 'trans_hash', $hash );
@@ -245,7 +363,7 @@ class FlutterExpressPay extends FlutterBaseController
             $body   = $response['redirect_params']['body'];
             $url    = $response['redirect_url'];
             $method = $response['redirect_method'];
-            
+
             return array(
                 'body' => $response['redirect_params']['body'],
                 'url' => $response['redirect_url'],

@@ -93,6 +93,16 @@ class FlutterSmartCOD extends FlutterBaseController
         $order_id = sanitize_text_field($body['order_id']);
         
         $order = wc_get_order( $order_id );
+        if ( ! $order ) {
+            return new WP_Error('order_not_found', 'Order not found.', array('status' => 404));
+        }
+
+        // These routes take an order id from an unauthenticated caller, so bind the
+        // request to the order before acting on it.
+        $key_check = mstore_api_check_payment_order_key($order, $body, true);
+        if (is_wp_error($key_check)) {
+            return $key_check;
+        }
 
 		if ( ! $this->is_rf_order( $order ) ) {
 			return ['success' => true];

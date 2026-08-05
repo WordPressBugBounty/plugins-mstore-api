@@ -13,6 +13,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
     protected $_listeo = 'listeo';
     protected $_customPostType = ['job_listing', 'listing']; // all custom post type
     protected $_isListable, $_isListify, $_isMyListing, $_isListingPro, $_isListeo;
+    protected $_vendorStoreProductsCache = array();
 
     public function __construct()
     {
@@ -401,6 +402,14 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             'schema' => null,
         ));
 
+        register_rest_field($this->_customPostType, 'store', array(
+            'get_callback' => array(
+                $this,
+                'get_store_info_for_api'
+            ) ,
+            'schema' => null,
+        ));
+
         /* Register for custom routes to rest API */
         register_rest_route('wp/v2', '/getRating/(?P<id>\d+)', array(
             'methods' => 'GET',
@@ -556,6 +565,17 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             }
         ));
 
+        register_rest_route('wp/v2', '/get-listeo-editor-fields', array(
+            'methods' => 'GET',
+            'callback' => array(
+                $this,
+                'get_listeo_editor_fields'
+            ),
+            'permission_callback' => function () {
+                return true;
+            }
+        ));
+
         register_rest_route('wp/v2', '/get-location-fields', array(
             'methods' => 'GET',
             'callback' => array(
@@ -587,6 +607,202 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 return true;
             }
         ));
+    }
+
+    public function get_store_info_for_api($object, $field_name = null, $request = null)
+    {
+        static $store_cache = array();
+
+        $post_id = 0;
+
+        if (is_array($object) && isset($object['id'])) {
+            $post_id = absint($object['id']);
+        } elseif (is_object($object) && isset($object->ID)) {
+            $post_id = absint($object->ID);
+        } elseif (is_numeric($object)) {
+            $post_id = absint($object);
+        }
+
+        if (!$post_id) {
+            return null;
+        }
+
+        $author_id = absint(get_post_field('post_author', $post_id));
+        if (!$author_id) {
+            return null;
+        }
+
+        // Dokan store data
+        if (function_exists('is_plugin_active') && is_plugin_active('dokan-lite/dokan.php') && function_exists('dokan')) {
+            $cache_key = 'dokan:' . $author_id;
+            if (array_key_exists($cache_key, $store_cache)) {
+                if ($store_cache[$cache_key] !== null) {
+                    return $store_cache[$cache_key];
+                }
+            } else {
+                $store_cache[$cache_key] = null;
+                $store = dokan()->vendor->get($author_id);
+                if ($store && method_exists($store, 'to_array')) {
+                    $store_data = $store->to_array();
+                    if (is_array($store_data)) {
+                        $extra_fields = apply_filters('dokan_rest_store_additional_fields', [], $store, $request);
+                        if (is_array($extra_fields)) {
+                            $store_data = array_merge($store_data, $extra_fields);
+                        }
+                        $store_cache[$cache_key] = $store_data;
+                        return $store_cache[$cache_key];
+                    }
+                }
+            }
+        }
+
+        // WCFM store data
+        if (function_exists('is_plugin_active')
+            && is_plugin_active('wc-multivendor-marketplace/wc-multivendor-marketplace.php')
+            && class_exists('FlutterWCFMHelper')) {
+            $vendor_id = $author_id;
+            if (function_exists('wcfm_get_vendor_id_by_post')) {
+                $vendor_id_by_post = absint(wcfm_get_vendor_id_by_post($post_id));
+                if ($vendor_id_by_post) {
+                    $vendor_id = $vendor_id_by_post;
+                }
+            }
+
+            if ($vendor_id) {
+                $requester_key = is_user_logged_in() ? get_current_user_id() : 'guest';
+                $cache_key = 'wcfm:' . $vendor_id . ':' . $requester_key;
+                if (array_key_exists($cache_key, $store_cache)) {
+                    return $store_cache[$cache_key];
+                }
+
+                $store_cache[$cache_key] = null;
+                $helper = new FlutterWCFMHelper();
+                $store_response = $helper->flutter_get_wcfm_stores_by_id($vendor_id);
+                if ($store_response instanceof WP_REST_Response) {
+                    $store_cache[$cache_key] = $this->get_public_wcfm_store_data($store_response->get_data(), $vendor_id);
+                    return $store_cache[$cache_key];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function get_public_wcfm_store_data($store_data, $vendor_id)
+    {
+        if (!is_array($store_data)) {
+            return null;
+        }
+
+        $can_view_private = is_user_logged_in()
+            && (get_current_user_id() === absint($vendor_id)
+                || current_user_can('manage_woocommerce')
+                || current_user_can('manage_options'));
+        $is_field_public = function($field) use ($store_data) {
+            $hide_key = 'store_hide_' . $field;
+            $hide_value = null;
+
+            if (array_key_exists($hide_key, $store_data)) {
+                $hide_value = $store_data[$hide_key];
+            } elseif (isset($store_data['settings']) && is_array($store_data['settings']) && array_key_exists($hide_key, $store_data['settings'])) {
+                $hide_value = $store_data['settings'][$hide_key];
+            }
+
+            return in_array(strtolower(trim((string)$hide_value)), array('no', 'false', '0'), true);
+        };
+
+        $can_view_email = $can_view_private || $is_field_public('email');
+        $can_view_phone = $can_view_private || $is_field_public('phone');
+        $can_view_address = $can_view_private || $is_field_public('address');
+        $can_view_description = $can_view_private || $is_field_public('description');
+
+        $public_store = array();
+        $public_keys = array(
+            'vendor_id',
+            'vendor_display_name',
+            'vendor_shop_name',
+            'vendor_shop_logo',
+            'vendor_banner',
+            'vendor_list_banner',
+            'mobile_banner',
+            'store_rating',
+            'vendor_reviews_count',
+            'shop_url',
+            'min_order_amt',
+            'enable_chat',
+            'disable_vendor',
+            'is_store_offline',
+            'store_hide_description',
+            'store_hide_address',
+            'store_hide_email',
+            'store_hide_phone',
+        );
+
+        foreach ($public_keys as $key) {
+            if (array_key_exists($key, $store_data)) {
+                $public_store[$key] = $store_data[$key];
+            }
+        }
+
+        if ($can_view_address && array_key_exists('vendor_address', $store_data)) {
+            $public_store['vendor_address'] = $store_data['vendor_address'];
+        }
+
+        if ($can_view_description && array_key_exists('vendor_description', $store_data)) {
+            $public_store['vendor_description'] = $store_data['vendor_description'];
+        }
+
+        if ($can_view_email && array_key_exists('vendor_email', $store_data)) {
+            $public_store['vendor_email'] = $store_data['vendor_email'];
+        }
+
+        if ($can_view_phone && array_key_exists('vendor_phone', $store_data)) {
+            $public_store['vendor_phone'] = $store_data['vendor_phone'];
+        }
+
+        if ($can_view_email && array_key_exists('chat_email', $store_data)) {
+            $public_store['chat_email'] = $store_data['chat_email'];
+        }
+
+        if (isset($store_data['settings']) && is_array($store_data['settings'])) {
+            $settings = array();
+            $public_setting_keys = array(
+                'gravatar',
+                'banner',
+                'mobile_banner',
+                'store_lat',
+                'store_lng',
+                'geolocation',
+                'social',
+                'wcfm_store_hours',
+                'wcfm_vacation_mode',
+                'wcfm_disable_vacation_purchase',
+                'wcfm_vacation_mode_type',
+                'wcfm_vacation_start_date',
+                'wcfm_vacation_end_date',
+                'wcfm_vacation_mode_msg',
+                'store_hide_description',
+                'store_hide_address',
+                'store_hide_email',
+                'store_hide_phone',
+            );
+
+            foreach ($public_setting_keys as $key) {
+                if (array_key_exists($key, $store_data['settings'])) {
+                    $settings[$key] = $store_data['settings'][$key];
+                }
+            }
+
+            if ($can_view_phone && array_key_exists('phone', $store_data['settings'])) {
+                $settings['phone'] = $store_data['settings']['phone'];
+            }
+
+            if (!empty($settings)) {
+                $public_store['settings'] = $settings;
+            }
+        }
+
+        return $public_store;
     }
 
     public function get_reviews_criteria($request) {
@@ -697,6 +913,13 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             return $icon ? $icon[0] : '';
         }
         return '';
+    }
+
+    private function convert_icon_class_to_url($icon_class) {
+        if (!class_exists('MStore_Icon_Helper')) {
+            return '';
+        }
+        return MStore_Icon_Helper::convert_icon_class_to_url($icon_class);
     }
 
     public function get_submit_listing($request){
@@ -1413,6 +1636,379 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         return new WP_Error("not_found", "get_contact_fields is not implemented", array('status' => 404));
     }
 
+    public function get_listeo_editor_fields($request) {
+        if (!$this->_isListeo) {
+            return new WP_Error("not_found", "get_listeo_editor_fields is not implemented", array('status' => 404));
+        }
+
+        $listing_id = absint($request->get_param('id'));
+        $listing_type = sanitize_key($request->get_param('type'));
+        if (empty($listing_type)) {
+            $listing_type = sanitize_key($request->get_param('listing_type'));
+        }
+
+        if (empty($listing_id) && empty($listing_type)) {
+            return new WP_Error("missing_params", "Either id or type/listing_type parameter is required", array('status' => 400));
+        }
+
+        if (empty($listing_type) && !empty($listing_id)) {
+            $listing_type = sanitize_key(get_post_meta($listing_id, '_listing_type', true));
+        }
+
+        if (empty($listing_type)) {
+            return new WP_Error("missing_type", "Cannot detect listing type from id or type/listing_type parameter", array('status' => 400));
+        }
+
+        $fields_source = get_option("listeo_{$listing_type}_tab_fields");
+        if (empty($fields_source)) {
+            if (method_exists('Listeo_Core_Meta_Boxes', "meta_boxes_{$listing_type}")) {
+                $fields_source = call_user_func(array('Listeo_Core_Meta_Boxes', "meta_boxes_{$listing_type}"));
+            } else {
+                $fields_source = array();
+            }
+        }
+
+        $fields = isset($fields_source['fields']) ? $fields_source['fields'] : $fields_source;
+        $listing_type_fields = array();
+
+        // Closure to format individual field definition with values from listing post meta
+        $format_listeo_editor_field = function ($field, $is_term_field = false) use ($listing_id) {
+            $field_id = $field['id'] ?? '';
+            $field_type = $field['type'] ?? 'text';
+            $field_icon = $field['icon'] ?? '';
+            $field_options = $field['options'] ?? array();
+            $field_options_icons = $field['options_icons'] ?? array();
+
+            // Build standardized option structure with icon URL conversion
+            $build_option = function ($name, $value, $icon = '') {
+                $icon_class = (string) $icon;
+                return array(
+                    'name' => (string) $name,
+                    'value' => (string) $value,
+                    'icon' => $icon_class,
+                    'image' => $this->convert_icon_class_to_url($icon_class),
+                );
+            };
+
+            // Parse option from various Listeo formats: scalar (key => "Label"), array with name/value keys
+            $parse_option = function ($key, $val) use ($build_option) {
+                if (is_object($val)) $val = (array) $val;
+
+                // Format 1: Simple scalar - key => "Label"
+                if (is_scalar($val)) {
+                    $name = trim((string) $val);
+                    if ($name === '') return null;
+                    $value = is_scalar($key) ? trim((string) $key) : $name;
+                    return $build_option($name, $value);
+                }
+
+                if (!is_array($val)) return null;
+
+                // Format 2: Array with name/label and value/key fields
+                $name = trim((string) ($val['name'] ?? $val['label'] ?? ''));
+                $value = trim((string) ($val['value'] ?? $val['key'] ?? ''));
+
+                // Fallback: use array key as name if missing
+                if ($name === '' && is_scalar($key)) {
+                    $name = trim((string) $key);
+                }
+                if ($value === '') $value = $name;
+
+                return ($name !== '' && $value !== '') ? $build_option($name, $value) : null;
+            };
+
+            // Normalize all options and build lookup map for flexible key matching
+            $options = array();
+            $options_lookup = array();
+            if (is_array($field_options)) {
+                foreach ($field_options as $key => $val) {
+                    $parsed = $parse_option($key, $val);
+                    if (!$parsed || !isset($parsed['value']) || $parsed['value'] === '') continue;
+
+                    $parsed_value = $parsed['value'];
+
+                    // Apply icon from separate options_icons field (Listeo stores icons separately)
+                    if (is_array($field_options_icons) && isset($field_options_icons[$parsed_value])) {
+                        $parsed['icon'] = (string) $field_options_icons[$parsed_value];
+                        $parsed['image'] = $this->convert_icon_class_to_url($parsed['icon']);
+                    }
+
+                    // Store by normalized value
+                    if (!isset($options[$parsed_value])) {
+                        $options[$parsed_value] = $parsed;
+                    }
+
+                    // Build lookup map: allow matching by both normalized value AND original key
+                    $options_lookup[$parsed_value] = $options[$parsed_value];
+                    if (is_scalar($key)) {
+                        $key_str = trim((string) $key);
+                        if ($key_str !== '' && !isset($options_lookup[$key_str])) {
+                            $options_lookup[$key_str] = $options[$parsed_value];
+                        }
+                    }
+                }
+            }
+
+            // Lookup helper: resolve value using flexible key matching
+            $get_option = function ($val) use ($options_lookup) {
+                return $options_lookup[(string) $val] ?? null;
+            };
+            // Extract field metadata with fallbacks for term fields vs regular fields
+            $field_desc = $field['desc'] ?? ($is_term_field ? ($field['description'] ?? '') : '');
+            $field_classes = $is_term_field
+                ? ($field['class'] ?? $field['classes'] ?? '')
+                : ($field['classes'] ?? $field['row_classes'] ?? '');
+
+            // Determine if field accepts multiple values
+            $field_type_lower = strtolower($field_type);
+            $is_multi = in_array($field_type_lower, ['select_multiple', 'multicheck_split', 'repeatable'], true);
+
+            // Extract field value from post meta if listing_id provided
+            $field_value = $is_multi ? array() : '';
+            $selected_items = array();
+
+            if ($listing_id > 0 && $field_id !== '') {
+                if ($is_multi) {
+                    // Special handling for repeatable fields (supports multiple groups)
+                    if ($field_type_lower === 'repeatable' && !empty($field_options)) {
+                        // Get raw meta data
+                        $raw_meta_data = get_post_meta($listing_id, $field_id, false);
+
+                        // Each meta row may contain groups - flatten nested arrays
+                        foreach ((array) $raw_meta_data as $raw) {
+                            // Normalize to array: handle serialized, JSON, or already-array formats
+                            if (!is_array($raw)) {
+                                if (is_string($raw)) {
+                                    // Try unserialize first (WordPress common format)
+                                    $unserialized = @maybe_unserialize($raw);
+                                    if (is_array($unserialized)) {
+                                        $raw = $unserialized;
+                                    } else {
+                                        // Try JSON decode
+                                        $decoded = json_decode($raw, true);
+                                        if (is_array($decoded)) {
+                                            $raw = $decoded;
+                                        } else {
+                                            continue; // Skip non-array values
+                                        }
+                                    }
+                                } else {
+                                    continue; // Skip non-array, non-string values
+                                }
+                            }
+
+                            // Check if this is a nested array (contains multiple groups as array items)
+                            // Format: [[group1], [group2]] or [{...}, {...}] with numeric keys
+                            $groups = array();
+                            $is_nested = false;
+                            foreach ($raw as $idx => $item) {
+                                if (is_int($idx) && is_array($item)) {
+                                    $groups[] = $item;
+                                    $is_nested = true;
+                                }
+                            }
+
+                            // If nested, process each group separately
+                            if ($is_nested) {
+                                foreach ($groups as $group) {
+                                    foreach ($group as $k => $v) {
+                                        $k = is_string($k) ? trim($k) : '';
+                                        if ($k === '') continue;
+
+                                        $opt = $get_option($k);
+                                        $name = $opt ? $opt['name'] : $k;
+                                        $icon = $opt ? $opt['icon'] : '';
+                                        $value = is_scalar($v) ? trim((string) $v) : '';
+
+                                        $selected_items[] = $build_option($name, $value, $icon);
+                                    }
+                                }
+                            } else {
+                                // Not nested - process directly as single group
+                                foreach ($raw as $k => $v) {
+                                    $k = is_string($k) ? trim($k) : '';
+                                    if ($k === '') continue;
+
+                                    $opt = $get_option($k);
+                                    $name = $opt ? $opt['name'] : $k;
+                                    $icon = $opt ? $opt['icon'] : '';
+                                    $value = is_scalar($v) ? trim((string) $v) : '';
+
+                                    $selected_items[] = $build_option($name, $value, $icon);
+                                }
+                            }
+                        }
+                    } else {
+                        // For select_multiple and multicheck_split: extract and unique values
+                        $raw_values = array();
+                        foreach ((array) get_post_meta($listing_id, $field_id, false) as $raw) {
+                            if (is_array($raw)) {
+                                $raw_values = array_merge($raw_values, $raw);
+                            } elseif (is_string($raw)) {
+                                // Try JSON decode
+                                $decoded = json_decode($raw, true);
+                                if (is_array($decoded)) {
+                                    $raw_values = array_merge($raw_values, $decoded);
+                                } elseif (strpos($raw, ',') !== false) {
+                                    // Try CSV format
+                                    $raw_values = array_merge($raw_values, array_map('trim', explode(',', $raw)));
+                                } else {
+                                    $raw_values[] = $raw;
+                                }
+                            } elseif ($raw !== '' && $raw !== null && $raw !== false) {
+                                $raw_values[] = $raw;
+                            }
+                        }
+
+                        // Flatten and normalize
+                        foreach ($raw_values as $val) {
+                            if (is_array($val)) {
+                                foreach ($val as $nested) {
+                                    if (is_scalar($nested) && $nested !== '' && $nested !== null && $nested !== false) {
+                                        $field_value[] = (string) (is_string($nested) ? trim($nested) : $nested);
+                                    }
+                                }
+                            } elseif (is_scalar($val) && $val !== '' && $val !== null && $val !== false) {
+                                $field_value[] = (string) (is_string($val) ? trim($val) : $val);
+                            }
+                        }
+                        $field_value = array_values(array_unique($field_value));
+
+                        // Build selected_items for select_multiple and multicheck_split
+                        foreach ($field_value as $val) {
+                            $key = (string) $val;
+                            $opt = $get_option($key);
+                            $name = $opt ? $opt['name'] : $key;
+                            $icon = $opt ? $opt['icon'] : '';
+
+                            $selected_items[] = $build_option($name, $key, $icon);
+                        }
+                    }
+                } else {
+                    $field_value = get_post_meta($listing_id, $field_id, true);
+                }
+            }
+
+            // For single-value select fields, resolve display label from options
+            $field_value_label = '';
+            if (!$is_multi && !empty($options) && $field_value !== '' && $field_value !== null) {
+                $opt = $get_option((string) $field_value);
+                if ($opt) $field_value_label = $opt['name'];
+            }
+
+            // Build output field structure
+            $output = array(
+                'id' => $field_id,
+                'name' => $field['name'] ?? '',
+                'type' => $field_type,
+                'required' => $field['required'] ?? false,
+                'placeholder' => $field['placeholder'] ?? $field['attributes']['placeholder'] ?? '',
+                'icon' => $field_icon,
+                'image' => $this->convert_icon_class_to_url($field_icon),
+                'desc' => $field_desc,
+                'default' => $field['default'] ?? '',
+                'css_class' => $field_classes,
+                'show_value_before_label' => $field['show_value_before_label'] ?? $field['invert'] ?? false,
+                'invert' => $field['invert'] ?? false,
+            );
+
+            // Add single-value fields
+            if (!$is_multi) {
+                $output['value'] = $field_value;
+                $output['value_label'] = $field_value_label;
+            }
+
+            // Add options array if present (only for field types that use them)
+            if (isset($field['show_option_none'])) {
+                $output['show_option_none'] = $field['show_option_none'];
+            }
+            $types_with_options = ['select', 'radio', 'select_multiple', 'multicheck_split', 'repeatable'];
+            if (in_array($field_type_lower, $types_with_options, true) && !empty($options)) {
+                $output['options'] = array_values($options);
+            }
+
+            // Add selected_items for multi-value fields
+            if ($is_multi) {
+                $output['selected_items'] = $selected_items;
+            }
+
+            return $output;
+        };
+
+        if (!empty($fields) && is_array($fields)) {
+            foreach ($fields as $field) {
+                $listing_type_fields[] = $format_listeo_editor_field($field);
+            }
+        }
+
+        $custom_term_fields = get_option('listeo_custom_term_fields', array());
+        $term_field_groups = array();
+
+        if (is_array($custom_term_fields) && !empty($custom_term_fields)) {
+            foreach ($custom_term_fields as $taxonomy => $terms_data) {
+                if (!is_array($terms_data) || empty($terms_data)) {
+                    continue;
+                }
+
+                $selected_term_ids = array();
+                if ($listing_id > 0) {
+                    $selected_term_ids = wp_get_post_terms($listing_id, $taxonomy, array('fields' => 'ids'));
+                    if (is_wp_error($selected_term_ids)) {
+                        continue;
+                    }
+
+                    $selected_term_ids = array_map('intval', (array) $selected_term_ids);
+                }
+
+                foreach ($terms_data as $term_id => $unused) {
+                    $term_id = intval($term_id);
+                    if ($term_id <= 0) {
+                        continue;
+                    }
+
+                    if ($listing_id > 0 && !in_array($term_id, $selected_term_ids, true)) {
+                        continue;
+                    }
+
+                    $term_obj = get_term($term_id, $taxonomy);
+                    if (!$term_obj || is_wp_error($term_obj)) {
+                        continue;
+                    }
+
+                    $option_key = "listeo_tax-{$taxonomy}_term_{$term_id}_fields";
+                    $fields_data = get_option($option_key, array());
+                    if (!is_array($fields_data) || empty($fields_data)) {
+                        continue;
+                    }
+
+                    $formatted_fields = array();
+                    foreach ($fields_data as $field) {
+                        if (isset($field['type']) && $field['type'] === 'header') {
+                            continue;
+                        }
+
+                        $formatted_fields[] = $format_listeo_editor_field($field, true);
+                    }
+
+                    $term_field_groups[] = array(
+                        'taxonomy' => $taxonomy,
+                        'term_id' => $term_obj->term_id,
+                        'term_name' => $term_obj->name,
+                        'term_slug' => $term_obj->slug,
+                        'fields' => $formatted_fields,
+                    );
+                }
+            }
+        }
+
+        $response = array(
+            'listing_type_fields' => $listing_type_fields,
+            'term_fields' => $term_field_groups,
+        );
+
+        return $response;
+    }
+
     public function get_location_fields() {
         if ($this->_isListeo) {
             // Get location fields from options saved by Listeo_Fields_Editor
@@ -1531,95 +2127,152 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         return array_values($payment_methods);
     }
 
+    private function calculate_listeo_booking_price($listing_id, $date_start, $date_end, $guests, $children, $animals, $services, $coupon)
+    {
+        try {
+            return Listeo_Core_Bookings_Calendar::calculate_price(
+                $listing_id,
+                $date_start,
+                $date_end,
+                $guests,
+                $children,
+                $animals,
+                $services,
+                $coupon
+            );
+        } catch (Error $e) {
+            return Listeo_Core_Bookings_Calendar::calculate_price(
+                $listing_id,
+                $date_start,
+                $date_end,
+                $guests,
+                $services,
+                $coupon
+            );
+        }
+    }
+
     public function check_availability($request)
     {
-        if (!isset($request['slot']))
-        {
-            $slot = false;
-        }
-        else
-        {
-            $slot = $request['slot'];
-        }
-        if (isset($request['hour']))
-        {
+        $listing_id = $request['listing_id'];
+        $date_start = $request['date_start'];
+        $date_end = $request['date_end'];
+
+        $slot = $request['slot'] ?? false;
+
+        $has_hour = isset($request['hour']);
+        if ($has_hour) {
             $data['free_places'] = 1;
-        }
-        else
-        {
-            $data['free_places'] = Listeo_Core_Bookings_Calendar::count_free_places($request['listing_id'], $request['date_start'], $request['date_end'], json_encode($slot));
+        } else {
+            $data['free_places'] = Listeo_Core_Bookings_Calendar::count_free_places(
+                $listing_id,
+                $date_start,
+                $date_end,
+                json_encode($slot)
+            );
         }
 
-        $listing_id = $request['listing_id'];
-        $multiply = (int) ($request['tickets'] ?? $request['adults'] ?? 1);
-        $children_count = isset($request['children']) ? (int)$request['children'] : 0;
-        $animals_count  = isset($request['animals']) ? (int)$request['animals'] : 0;
+        $adults = (int) ($request['tickets'] ?? $request['adults'] ?? 1);
+        $children = (int) ($request['children'] ?? 0);
+        $animals  = (int) ($request['animals'] ?? 0);
 
         $coupon = (isset($request['coupon'])) ? $request['coupon'] : false;
-        $services = (isset($request['services'])) ? $request['services'] : false;
-        if (is_array($services) && count($services) > 0) {
-            $services = array_map(function($item){
-                return ['service' => sanitize_title($item['service']), 'value'=>$item['value']];
-            }, $services);
+        $services = $request['services'] ?? false;
+
+        // Normalize service payload to keep pricing stable regardless of input order.
+        if (is_array($services) || is_object($services)) {
+            if (is_object($services) && (isset($services->service) || isset($services->value))) {
+                $raw_services = array($services);
+            } elseif (is_array($services) && (isset($services['service']) || isset($services['value']))) {
+                $raw_services = array($services);
+            } else {
+                $raw_services = is_object($services) ? (array) $services : $services;
+            }
+
+            $service_map = array();
+
+            foreach ($raw_services as $item) {
+                if (is_object($item)) {
+                    $slug = isset($item->service) ? sanitize_title($item->service) : '';
+                    $value = isset($item->value) ? absint($item->value) : 0;
+                } elseif (is_array($item)) {
+                    $slug = isset($item['service']) ? sanitize_title($item['service']) : '';
+                    $value = isset($item['value']) ? absint($item['value']) : 0;
+                } else {
+                    continue;
+                }
+
+                // Ignore empty/invalid services and non-selected quantities.
+                if (empty($slug) || $value <= 0) {
+                    continue;
+                }
+
+                $service_map[$slug] = array(
+                    'service' => $slug,
+                    'value' => $value,
+                );
+            }
+
+            if (!empty($service_map) && function_exists('listeo_get_bookable_services')) {
+                $ordered_services = array();
+                $bookable_services = listeo_get_bookable_services($listing_id);
+
+                if (is_array($bookable_services)) {
+                    foreach ($bookable_services as $service) {
+                        if (!is_array($service) || empty($service['name'])) {
+                            continue;
+                        }
+
+                        $service_slug = sanitize_title($service['name']);
+                        if (isset($service_map[$service_slug])) {
+                            $ordered_services[] = $service_map[$service_slug];
+                            unset($service_map[$service_slug]);
+                        }
+                    }
+                }
+
+                // Keep unknown legacy services at the end instead of dropping them.
+                foreach ($service_map as $service_item) {
+                    $ordered_services[] = $service_item;
+                }
+
+                $services = !empty($ordered_services) ? $ordered_services : false;
+            } else {
+                $services = !empty($service_map) ? array_values($service_map) : false;
+            }
+        } else {
+            $services = false;
         }
 
-        try {
-            $args = array(
+        $data['price'] = $this->calculate_listeo_booking_price(
+            $listing_id,
+            $date_start,
+            $date_end,
+            $adults,
+            $children,
+            $animals,
+            $services,
+            ''
+        );
+
+        if (!empty($coupon)) {
+
+            $price_discount = $this->calculate_listeo_booking_price(
                 $listing_id,
-                $request['date_start'],
-                $request['date_end'],
-                $multiply,
-                $children_count,
-                $animals_count,
+                $date_start,
+                $date_end,
+                $adults,
+                $children,
+                $animals,
                 $services,
-                ''
+                $coupon
             );
 
-            $data['price'] = call_user_func_array(
-                array('Listeo_Core_Bookings_Calendar', 'calculate_price'),
-                $args
-            );
-
-            if (!empty($coupon)) {
-                $args[count($args)-1] = $coupon;
-                $price_with_coupon = call_user_func_array(
-                    array('Listeo_Core_Bookings_Calendar', 'calculate_price'),
-                    $args
-                );
-                if ($price_with_coupon <= $data['price']) {
-                    $data['price_discount'] = $price_with_coupon;
-                }
-            }
-        } catch (Error $e) {
-            $data['price'] = Listeo_Core_Bookings_Calendar::calculate_price(
-                $listing_id,
-                $request['date_start'],
-                $request['date_end'],
-                $multiply,
-                $children_count,
-                $animals_count,
-                $services,
-                ''
-            );
-
-            if (!empty($coupon))
-            {
-                $price_with_coupon = Listeo_Core_Bookings_Calendar::calculate_price(
-                    $request['listing_id'],
-                    $request['date_start'],
-                    $request['date_end'],
-                    $multiply,
-                    $children_count,
-                    $animals_count,
-                    $services,
-                    $coupon
-                );
-                if ($price_with_coupon <= $data['price']) {
-                    $data['price_discount'] = $price_with_coupon;
-                }
+            if ($price_discount <= $data['price']) {
+                $data['price_discount'] = $price_discount;
             }
         }
-        // $_slots = $this->update_slots($request);
+
         return $data;
     }
 
@@ -2003,8 +2656,11 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         $data = json_decode($object['value']);
         $date_start = isset($data->date_start) ? $data->date_start : null;
         $date_end = isset($data->date_end) ? $data->date_end : null;
-        $adults = isset($data->adults) ? $data->adults : null;
-        $tickets = isset($data->tickets) ? $data->tickets : null;
+        $adults   = (int) ($data->tickets ?? $data->adults ?? 1);
+        $children = (int) ($data->children ?? 0);
+        $infants  = (int) ($data->infants ?? 0);
+        $animals  = (int) ($data->animals ?? 0);
+        $tickets = (int) ($data->tickets ?? 0);
         $listing_id = isset($data->listing_id) ? $data->listing_id : null;
         $slot = isset($data->slot) ? $data->slot : null;
         $_hour_end = isset($data->_hour_end) ? $data->_hour_end : null;
@@ -2023,33 +2679,17 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         $comment_services = false;
         $coupon = isset($data->coupon) ? $data->coupon : null;
         $message = '';
-        $calculate_price = function($listing_id, $date_start, $date_end, $multiply, $services, $coupon) use ($data) {
-            try {
-                $args = array(
-                    $listing_id,
-                    $date_start,
-                    $date_end,
-                    $multiply,
-                    isset($data->children) ? (int)$data->children : 0,
-                    isset($data->animals) ? (int)$data->animals : 0,
-                    $services,
-                    $coupon
-                );
-                return call_user_func_array(
-                    array('Listeo_Core_Bookings_Calendar', 'calculate_price'),
-                    $args
-                );
-            } catch (Error $e) {
-                return Listeo_Core_Bookings_Calendar::calculate_price(
-                    $listing_id,
-                    $date_start,
-                    $date_end,
-                    $multiply,
-                    $services,
-                    $coupon
-                );
-            }
-        };
+
+        $price = $this->calculate_listeo_booking_price(
+            $listing_id,
+            $date_start,
+            $date_end,
+            $adults,
+            $children,
+            $animals,
+            $services,
+            $coupon
+        );
 
         if (!empty($services))
         {
@@ -2068,18 +2708,6 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
             //since 1.3 change comment_service to json
             $countable = array_column($services, 'value');
-            if (isset($adults))
-            {
-                $guests = $adults;
-            }
-            else if (isset($tickets))
-            {
-                $guests = $tickets;
-            }
-            else
-            {
-                $guests = 1;
-            }
             $i = 0;
             foreach ($bookable_services as $key => $service)
             {
@@ -2133,6 +2761,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
         $listing_owner = get_post_field('post_author', $listing_id);
         $listing_address = get_post_meta($listing_id, '_address', true);
+        $count_per_guest = get_post_meta($listing_id, "_count_per_guest", true);
 
         switch ($listing_meta['_listing_type'][0])
         {
@@ -2143,6 +2772,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     'email' => $email,
                     'phone' => $billing_phone,
                     'message' => $object['message'],
+                    // Event bookings only have 'tickets' field, not 'adults', 'children', 'infants', 'animals'.
                     'tickets' => $tickets,
                     'service' => $comment_services,
                     'booking_location' => $listing_address,
@@ -2158,6 +2788,18 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     }
                 }
 
+                $price = $this->calculate_listeo_booking_price(
+                    $listing_id,
+                    $date_start,
+                    $date_end,
+                    $tickets,
+                    // For event bookings, children/animals are not separate - all go under 'tickets' count. Pass 0 for those.
+                    0,
+                    0,
+                    $services,
+                    $coupon
+                );
+
                 $booking_id = self::insert_booking(array(
                     'owner_id' => $listing_owner,
                     'bookings_author' => $_user_id,
@@ -2166,7 +2808,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     'date_end' => $date_start,
                     'comment' => json_encode($comment),
                     'type' => 'reservation',
-                    'price' => $calculate_price($listing_id, $date_start, $date_end, $tickets, $services, $coupon),
+                    'price' => $price,
                 ));
 
                 $already_sold_tickets = (int)get_post_meta($listing_id, '_event_tickets_sold', true);
@@ -2187,16 +2829,16 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 $free_places = Listeo_Core_Bookings_Calendar::count_free_places($listing_id, $date_start, $date_end);
                 if ($free_places > 0)
                 {
-                    $count_per_guest = get_post_meta($listing_id, "_count_per_guest", true);
-                    if ($count_per_guest)
-                    {
-                        $multiply = isset($adults) ? $adults : 1;
-                        $price = $calculate_price($listing_id, $date_start, $date_end, $multiply, $services, $coupon);
-                    }
-                    else
-                    {
-                        $price = $calculate_price($listing_id, $date_start, $date_end, 1, $services, $coupon);
-                    }
+                    $price = $this->calculate_listeo_booking_price(
+                        $listing_id,
+                        $date_start,
+                        $date_end,
+                        $count_per_guest ? $adults : 1,
+                        $children,
+                        $animals,
+                        $services,
+                        $coupon
+                    );
 
                     $comment_arr = array(
                         'first_name' => $first_name,
@@ -2205,6 +2847,9 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                         'phone' => $billing_phone,
                         'message' => $object['message'],
                         'adults' => $adults,
+                        'children' => $children,
+                        'infants' => $infants,
+                        'animals' => $animals,
                         'service' => $comment_services,
                         'booking_location' => $listing_address,
                         'billing_address_1' => $billing_address_1,
@@ -2250,16 +2895,16 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 }
                 if (!isset($slot))
                 {
-                    $count_per_guest = get_post_meta($listing_id, "_count_per_guest", true);
-                    if ($count_per_guest)
-                    {
-                        $multiply = isset($adults) ? $adults : 1;
-                        $price = $calculate_price($listing_id, $date_start, $date_end, $multiply, $services, $coupon);
-                    }
-                    else
-                    {
-                        $price = $calculate_price($listing_id, $date_start, $date_end, 1, $services, $coupon);
-                    }
+                    $price = $this->calculate_listeo_booking_price(
+                        $listing_id,
+                        $date_start,
+                        $date_end,
+                        $count_per_guest ? $adults : 1,
+                        $children,
+                        $animals,
+                        $services,
+                        $coupon
+                    );
                     $hour_end = (isset($_hour_end) && !empty($_hour_end)) ? $_hour_end : $_hour;
                     $comment_arr = array(
                         'first_name' => $first_name,
@@ -2267,6 +2912,9 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                         'email' => $email,
                         'phone' => $billing_phone,
                         'adults' => $adults,
+                        'children' => $children,
+                        'infants' => $infants,
+                        'animals' => $animals,
                         'message' => $object['message'],
                         'service' => $comment_services,
                         'booking_location' => $listing_address,
@@ -2305,17 +2953,17 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                         $hours = explode(' - ', $slot[0]);
                         $hour_start = date("H:i:s", strtotime($hours[0]));
                         $hour_end = date("H:i:s", strtotime($hours[1]));
-                        $count_per_guest = get_post_meta($listing_id, "_count_per_guest", true);
 
-                        if ($count_per_guest)
-                        {
-                            $multiply = isset($adults) ? $adults : 1;
-                            $price = $calculate_price($listing_id, $date_start, $date_end, $multiply, $services, $coupon);
-                        }
-                        else
-                        {
-                            $price = $calculate_price($listing_id, $date_start, $date_end, 1, $services, $coupon);
-                        }
+                        $price = $this->calculate_listeo_booking_price(
+                            $listing_id,
+                            $date_start,
+                            $date_end,
+                            $count_per_guest ? $adults : 1,
+                            $children,
+                            $animals,
+                            $services,
+                            $coupon
+                        );
 
                         $comment_arr = array(
                             'first_name' => $first_name,
@@ -2323,6 +2971,9 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                             'email' => $email,
                             'phone' => $billing_phone,
                             'adults' => $adults,
+                            'children' => $children,
+                            'infants' => $infants,
+                            'animals' => $animals,
                             'message' => $object['message'],
                             'service' => $comment_services,
                             'billing_address_1' => $billing_address_1,
@@ -3005,6 +3656,36 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     }
                 }
 
+                // Save rating and criteria ratings to comment meta
+                if (!is_wp_error($comment) && $this->_isListeo) {
+                    // Save overall rating (map 'rating' field to 'listeo-rating' meta key)
+                    $rating = $request->get_param('rating');
+                    if ($rating !== null && $rating !== '' && is_numeric($rating)) {
+                        $rating = (float) $rating;
+                        if ($rating < 0) {
+                            $rating = 0;
+                        }
+                        update_comment_meta($comment->comment_ID, 'listeo-rating', $rating);
+                    }
+
+                    // Save criteria ratings if provided
+                    if (function_exists('listeo_get_reviews_criteria')) {
+                        $criteria = listeo_get_reviews_criteria();
+                        if (is_array($criteria)) {
+                            foreach ($criteria as $key => $value) {
+                                $criteria_rating = $request->get_param($key);
+                                if ($criteria_rating !== null && $criteria_rating !== '' && is_numeric($criteria_rating)) {
+                                    $criteria_rating = (float) $criteria_rating;
+                                    if ($criteria_rating < 0) {
+                                        $criteria_rating = 0;
+                                    }
+                                    update_comment_meta($comment->comment_ID, $key, $criteria_rating);
+                                }
+                            }
+                        }
+                    }
+                }
+
                 return $comment;
             }
 
@@ -3023,6 +3704,14 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             foreach ($meta as $k => $item):
                 $meta[$k] = get_post_meta($post_id, $k, true);
             endforeach;
+
+            // Listeo store tab currently exposes all published vendor products,
+            // so the API returns vendor-based product IDs to match web behavior.
+            // Only override the stored meta for Listeo when WooCommerce is available.
+            if ($this->_isListeo && function_exists('wc_get_products')) {
+                $meta['_store_products'] = $this->get_store_products_for_api(array('id' => $post_id));
+            }
+
             if($this->_isMyListing){
                 $meta['_job_description'] = get_the_content($post_id);
                 $listing_type = $meta['_case27_listing_type'];
@@ -3048,6 +3737,71 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             }
 
             return $meta;
+        }
+
+        public function get_store_products_for_api($object)
+        {
+            if (is_array($object)) {
+                $post_id = absint($object['id'] ?? $object['ID'] ?? 0);
+            } elseif (is_object($object)) {
+                $post_id = absint($object->id ?? $object->ID ?? 0);
+            } else {
+                $post_id = absint($object);
+            }
+
+            if ($post_id <= 0) {
+                return array();
+            }
+
+            return $this->get_vendor_store_products_for_listing($post_id);
+        }
+
+        private function get_vendor_store_products_for_listing($post_id)
+        {
+            if (!function_exists('wc_get_products')) {
+                return array();
+            }
+
+            $vendor_id = absint(get_post_field('post_author', $post_id));
+            if ($vendor_id <= 0) {
+                return array();
+            }
+
+            if (isset($this->_vendorStoreProductsCache[$vendor_id])) {
+                return $this->_vendorStoreProductsCache[$vendor_id];
+            }
+
+            $args = array(
+                'status' => 'publish',
+                'author' => $vendor_id,
+                'limit' => -1,
+                'return' => 'ids',
+                'exclude_listing_booking' => 'true',
+                'tax_query' => array(
+                    array(
+                        'taxonomy' => 'product_cat',
+                        'field' => 'slug',
+                        'terms' => array('listeo-booking'),
+                        'operator' => 'NOT IN',
+                    ),
+                    array(
+                        'taxonomy' => 'product_type',
+                        'field' => 'slug',
+                        'terms' => array('listing_package'),
+                        'operator' => 'NOT IN',
+                    ),
+                ),
+            );
+
+            $product_ids = wc_get_products($args);
+            if (!is_array($product_ids)) {
+                $this->_vendorStoreProductsCache[$vendor_id] = array();
+                return $this->_vendorStoreProductsCache[$vendor_id];
+            }
+
+            $this->_vendorStoreProductsCache[$vendor_id] = array_values(array_filter(array_map('absint', $product_ids)));
+
+            return $this->_vendorStoreProductsCache[$vendor_id];
         }
 
         /**

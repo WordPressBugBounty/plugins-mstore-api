@@ -288,14 +288,7 @@ class VendorAdminWooHelper
         $sales_stats['gross_sales']['week_4'] = round($this->wcfm_get_gross_sales_by_vendor($id, '28day'), $price_decimal);
         $sales_stats['gross_sales']['week_5'] = round($this->wcfm_get_gross_sales_by_vendor($id, '35day'), $price_decimal);
         $sales_stats['gross_sales']['all'] = round($this->wcfm_get_gross_sales_by_vendor($id, 'all'), $price_decimal);
-        if ($sales_stats['gross_sales']['last_month'] != 0) {
-            $profit_percentage = round($sales_stats['gross_sales']['month'] - $sales_stats['gross_sales']['last_month'], 2);
-            $profit_percentage = round($profit_percentage / $sales_stats['gross_sales']['last_month'] * 100 / 100, 2);
-        } else {
-            $profit_percentage = round($sales_stats['gross_sales']['month'] - $sales_stats['gross_sales']['last_month'], 2);
-            $profit_percentage = round($profit_percentage / 1 * 100 / 100, 2);
-        }
-        $sales_stats['gross_sales']['profit_percentage'] = $profit_percentage;
+        $sales_stats['gross_sales']['profit_percentage'] = mstore_calculate_percentage_change($sales_stats['gross_sales']['month'], $sales_stats['gross_sales']['last_month']);
         $sales_stats['earnings']['last_month'] = round($this->wcfm_get_commission_by_vendor($id, 'last_month'), $price_decimal);
         $sales_stats['earnings']['month'] = round($this->wcfm_get_commission_by_vendor($id, 'month'), $price_decimal);
         $sales_stats['earnings']['year'] = round($this->wcfm_get_commission_by_vendor($id, 'year'), $price_decimal);
@@ -305,14 +298,7 @@ class VendorAdminWooHelper
         $sales_stats['earnings']['week_4'] = round($this->wcfm_get_commission_by_vendor($id, '28day'), $price_decimal);
         $sales_stats['earnings']['week_5'] = round($this->wcfm_get_commission_by_vendor($id, '35day'), $price_decimal);
         $sales_stats['earnings']['all'] = round($this->wcfm_get_commission_by_vendor($id, 'all'), $price_decimal);
-        if ($sales_stats['earnings']['last_month'] != 0) {
-            $profit_percentage = round($sales_stats['earnings']['month'] - $sales_stats['earnings']['last_month'], 2);
-            $profit_percentage = round($profit_percentage / $sales_stats['earnings']['last_month'] * 100 / 100, 2);
-        } else {
-            $profit_percentage = round($sales_stats['earnings']['month'] - $sales_stats['earnings']['last_month'], 2);
-            $profit_percentage = round($profit_percentage / 1 * 100 / 100, 2);
-        }
-        $sales_stats['earnings']['profit_percentage'] = $profit_percentage;
+        $sales_stats['earnings']['profit_percentage'] = mstore_calculate_percentage_change($sales_stats['earnings']['month'], $sales_stats['earnings']['last_month']);
 
         $sales_stats['currency'] = get_woocommerce_currency();
 

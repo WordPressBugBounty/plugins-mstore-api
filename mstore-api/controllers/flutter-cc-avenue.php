@@ -61,6 +61,17 @@ class FlutterCCAvenue extends FlutterBaseController
 
         global $woocommerce;
         $order = wc_get_order($order_id);
+        if (!$order) {
+            return new WP_Error('order_not_found', 'Order not found.', array('status' => 404));
+        }
+
+        // Unauthenticated route taking an order id from the caller: bind the request
+        // to the order before building a payment for it.
+        $key_check = mstore_api_check_payment_order_key($order, $body, true);
+        if (is_wp_error($key_check)) {
+            return $key_check;
+        }
+
         $order_id = $order_id.'_'.date("ymds");
 			
 		$post_data = get_post_meta($order_id,'_post_data',true);

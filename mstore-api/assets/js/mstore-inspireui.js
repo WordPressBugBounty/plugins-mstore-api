@@ -1,4 +1,7 @@
 jQuery(document).ready(function ($) {
+  // ==========================================================================
+  // JSON file management
+  // ==========================================================================
   $(document).on("click", ".mstore-delete-json-file", function () {
     var id = $(this).data("id");
     var nonce = $(this).data("nonce");
@@ -19,6 +22,9 @@ jQuery(document).ready(function ($) {
     return false;
   });
 
+  // ==========================================================================
+  // General settings
+  // ==========================================================================
   $(document).on("blur", ".mstore-update-limit-product", function () {
     var limit = $(this).val();
     var nonce = $(this).data("nonce");
@@ -38,6 +44,9 @@ jQuery(document).ready(function ($) {
     return false;
   });
 
+  // ==========================================================================
+  // Order notification handlers
+  // ==========================================================================
   $(document).on("blur", ".mstore-update-new-order-title", function () {
     var title = $(this).val();
     var nonce = $(this).data("nonce");
@@ -114,6 +123,149 @@ jQuery(document).ready(function ($) {
     return false;
   });
 
+  // ==========================================================================
+  // Booking notification handlers (Listeo)
+  // ==========================================================================
+  $(document).on("blur", ".mstore-update-new-booking-title", function () {
+    var title = $(this).val();
+    var nonce = $(this).data("nonce");
+    $.ajax({
+      type: "post",
+      url: MyAjax.ajaxurl,
+      data: {
+        action: "mstore_update_new_booking_title",
+        title: title,
+        nonce: nonce,
+      },
+      success: function (result) {
+        if (result == "success") {
+        }
+      },
+    });
+    return false;
+  });
+
+  $(document).on("blur", ".mstore-update-new-booking-message", function () {
+    var message = $(this).val();
+    var nonce = $(this).data("nonce");
+    $.ajax({
+      type: "post",
+      url: MyAjax.ajaxurl,
+      data: {
+        action: "mstore_update_new_booking_message",
+        message: message,
+        nonce: nonce,
+      },
+      success: function (result) {
+        if (result == "success") {
+        }
+      },
+    });
+    return false;
+  });
+
+  $(document).on("blur", ".mstore-update-status-booking-title", function () {
+    var title = $(this).val();
+    var nonce = $(this).data("nonce");
+    $.ajax({
+      type: "post",
+      url: MyAjax.ajaxurl,
+      data: {
+        action: "mstore_update_status_booking_title",
+        title: title,
+        nonce: nonce,
+      },
+      success: function (result) {
+        if (result == "success") {
+        }
+      },
+    });
+    return false;
+  });
+
+  $(document).on("blur", ".mstore-update-status-booking-message", function () {
+    var message = $(this).val();
+    var nonce = $(this).data("nonce");
+    $.ajax({
+      type: "post",
+      url: MyAjax.ajaxurl,
+      data: {
+        action: "mstore_update_status_booking_message",
+        message: message,
+        nonce: nonce,
+      },
+      success: function (result) {
+        if (result == "success") {
+        }
+      },
+    });
+    return false;
+  });
+
+
+  // ==========================================================================
+  // Delivery notification handlers
+  // ==========================================================================
+  $(document).on("blur", ".mstore-update-delivery-order-title", function () {
+    var title = $(this).val();
+    var nonce = $(this).data("nonce");
+    $.ajax({
+      type: "post",
+      url: MyAjax.ajaxurl,
+      data: {
+        action: "mstore_update_delivery_order_title",
+        title: title,
+        nonce: nonce,
+      },
+      success: function (result) {
+        if (result == "success") {
+        }
+      },
+    });
+    return false;
+  });
+
+  $(document).on("blur", ".mstore-update-delivery-order-message", function () {
+    var message = $(this).val();
+    var nonce = $(this).data("nonce");
+    $.ajax({
+      type: "post",
+      url: MyAjax.ajaxurl,
+      data: {
+        action: "mstore_update_delivery_order_message",
+        message: message,
+        nonce: nonce,
+      },
+      success: function (result) {
+        if (result == "success") {
+        }
+      },
+    });
+    return false;
+  });
+
+  $(document).on("blur", ".mstore-update-delivery-order-unassign-message", function () {
+    var message = $(this).val();
+    var nonce = $(this).data("nonce");
+    $.ajax({
+      type: "post",
+      url: MyAjax.ajaxurl,
+      data: {
+        action: "mstore_update_delivery_order_unassign_message",
+        message: message,
+        nonce: nonce,
+      },
+      success: function (result) {
+        if (result == "success") {
+        }
+      },
+    });
+    return false;
+  });
+
+  // ==========================================================================
+  // Apple Sign-In file management
+  // ==========================================================================
   $(document).on("change", "input[name='appleFileToUpload']", function () {
     $("button[name='but_apple_sign_in_submit']").click();
   });
@@ -136,6 +288,9 @@ jQuery(document).ready(function ($) {
     return false;
   });
 
+  // ==========================================================================
+  // Firebase file management
+  // ==========================================================================
   $(document).on("change", "input[name='firebaseFileToUpload']", function () {
     $("button[name='but_firebase_submit']").click();
   });
@@ -158,7 +313,9 @@ jQuery(document).ready(function ($) {
     return false;
   });
 
-  // Category Image Upload
+  // ==========================================================================
+  // Category image management
+  // ==========================================================================
   if ($(".flutter_category_media_button").length > 0) {
     if (typeof wp !== "undefined" && wp.media && wp.media.editor) {
       $(document).on(

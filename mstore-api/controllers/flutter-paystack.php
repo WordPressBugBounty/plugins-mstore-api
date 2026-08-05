@@ -64,6 +64,17 @@ class FlutterPayStack extends FlutterBaseController
         $payStack = new WC_Gateway_Paystack();
 
         $order        = wc_get_order( $order_id );
+        if ( ! $order ) {
+            return new WP_Error('order_not_found', 'Order not found.', array('status' => 404));
+        }
+
+        // Unauthenticated route taking an order id from the caller: bind the request
+        // to the order before building a payment for it.
+        $key_check = mstore_api_check_payment_order_key($order, $body, true);
+        if (is_wp_error($key_check)) {
+            return $key_check;
+        }
+
 		$email        = method_exists( $order, 'get_billing_email' ) ? $order->get_billing_email() : $order->billing_email;
 		$amount       = $order->get_total() * 100;
 		$txnref       = $order_id . '_' . time();

@@ -90,9 +90,66 @@ class ProductManagementHelper
         return [];
     }
 
+    protected function resolve_variation_attribute_slug($attribute)
+    {
+        $taxonomy = isset($attribute['name']) ? wc_clean($attribute['name']) : '';
+        $term_slug = isset($attribute['slug']) ? wc_clean($attribute['slug']) : '';
+        $term_name = isset($attribute['attribute_name']) ? sanitize_text_field($attribute['attribute_name']) : '';
+        $fallback_slug = $term_slug;
+
+        if (!empty($term_name) && 0 === strpos($taxonomy, 'pa_')) {
+            $fallback_slug = sanitize_title($term_name);
+        }
+
+        if (empty($taxonomy) || !taxonomy_exists($taxonomy)) {
+            return $fallback_slug;
+        }
+
+        $term = false;
+        $slug_candidates = array_unique([
+            $term_slug,
+            rawurldecode($term_slug),
+            urldecode($term_slug),
+        ]);
+
+        foreach ($slug_candidates as $slug) {
+            if (empty($slug)) {
+                continue;
+            }
+            $term = get_term_by('slug', $slug, $taxonomy);
+            if ($term && !is_wp_error($term)) {
+                break;
+            }
+        }
+
+        if ((!$term || is_wp_error($term)) && !empty($term_name)) {
+            $term = get_term_by('name', $term_name, $taxonomy);
+        }
+
+        if ($term && !is_wp_error($term)) {
+            return $term->slug;
+        }
+
+        return $fallback_slug;
+    }
+
     private function get_product_info_by_id($id){
         $product = wc_get_product($id);
+            // wc_get_product() returns false when the row is not a loadable product
+            // (for example a type registered by a plugin that is currently
+            // deactivated). Without this the next line fatals on a REST request.
+            if (!$product) {
+                return null;
+            }
             $p = $product->get_data();
+            $date_created = $product->get_date_created();
+            $p['date_created'] = $date_created ? wc_rest_prepare_date_response($date_created, false) : null;
+            $p['date_created_gmt'] = $date_created ? wc_rest_prepare_date_response($date_created, true) : null;
+
+            $date_modified = $product->get_date_modified();
+            $p['date_modified'] = $date_modified ? wc_rest_prepare_date_response($date_modified, false) : null;
+            $p['date_modified_gmt'] = $date_modified ? wc_rest_prepare_date_response($date_modified, true) : null;
+
             $image_arr = [];
             foreach (array_filter($p["gallery_image_ids"]) as $img) {
                 $image = wp_get_attachment_image_src($img, "full");
@@ -118,6 +175,12 @@ class ProductManagementHelper
             }
             $p["type"] = $product->get_type();
             $p["on_sale"] = $product->is_on_sale();
+            $date_on_sale_from = $product->get_date_on_sale_from();
+            $p['date_on_sale_from'] = $date_on_sale_from ? wc_rest_prepare_date_response($date_on_sale_from, false) : null;
+            $p['date_on_sale_from_gmt'] = $date_on_sale_from ? wc_rest_prepare_date_response($date_on_sale_from, true) : null;
+            $date_on_sale_to = $product->get_date_on_sale_to();
+            $p['date_on_sale_to'] = $date_on_sale_to ? wc_rest_prepare_date_response($date_on_sale_to, false) : null;
+            $p['date_on_sale_to_gmt'] = $date_on_sale_to ? wc_rest_prepare_date_response($date_on_sale_to, true) : null;
             $p["tags"] = wp_get_post_terms($product->get_id(), "product_tag");
             $p["brands"] = wp_get_post_terms($product->get_id(), "product_brand");
             $p['weight'] = $product->get_weight();
@@ -187,8 +250,12 @@ class ProductManagementHelper
                     $variation_data['price'] = $variation_p->get_price();
                     $variation_data['regular_price'] = $variation_p->get_regular_price() ;
                     $variation_data['sale_price'] =$variation_p->get_sale_price() ;
-                    $variation_data['date_on_sale_from'] = $variation_p->get_date_on_sale_from();
-                    $variation_data['date_on_sale_to'] = $variation_p->get_date_on_sale_to();
+                    $variation_date_on_sale_from = $variation_p->get_date_on_sale_from();
+                    $variation_data['date_on_sale_from'] = $variation_date_on_sale_from ? wc_rest_prepare_date_response($variation_date_on_sale_from, false) : null;
+                    $variation_data['date_on_sale_from_gmt'] = $variation_date_on_sale_from ? wc_rest_prepare_date_response($variation_date_on_sale_from, true) : null;
+                    $variation_date_on_sale_to = $variation_p->get_date_on_sale_to();
+                    $variation_data['date_on_sale_to'] = $variation_date_on_sale_to ? wc_rest_prepare_date_response($variation_date_on_sale_to, false) : null;
+                    $variation_data['date_on_sale_to_gmt'] = $variation_date_on_sale_to ? wc_rest_prepare_date_response($variation_date_on_sale_to, true) : null;
                     $variation_data['on_sale'] = $variation_p->is_on_sale();
                     $variation_data['in_stock'] =$variation_p->is_in_stock() ;
                     $variation_data['stock_quantity'] = $variation_p->get_stock_quantity();
@@ -304,7 +371,10 @@ class ProductManagementHelper
 
         $products_arr = [];
         foreach ($item as $pro) {
-            $products_arr[] = $this->get_product_info_by_id($pro->ID);
+            $product_info = $this->get_product_info_by_id($pro->ID);
+            if ($product_info !== null) {
+                $products_arr[] = $product_info;
+            }
         }
 
         return apply_filters(
@@ -592,7 +662,11 @@ class ProductManagementHelper
                 $pro_attributes = [];
                 foreach ($attribute_json as $key => $value) {
                     if ($value["isActive"]) {
-                        $attribute_name = $value["slug"];
+                        $attribute_name = !empty($value["attribute_key"])
+                            ? $value["attribute_key"]
+                            : (!empty($value["attributeKey"])
+                                ? $value["attributeKey"]
+                                : $value["slug"]);
                         $attribute_id = wc_attribute_taxonomy_id_by_name(
                             $attribute_name
                         );
@@ -616,16 +690,36 @@ class ProductManagementHelper
 
                 if ($product->get_type() == "variable") {
                     $variations_arr = json_decode($variations,true);
-					$available_variations_arr = $product->get_children();
+                    if (!is_array($variations_arr)) {
+                        $variations_arr = [];
+                    }
+                    $available_variations_arr = array_map('absint', $product->get_children());
+                    $request_variation_ids = [];
+
                     foreach ($variations_arr as $variation) {
-                        if(isset($variation['id'])){
-							$variation_id = $variation['id'];
-							if(!in_array(intval($variation_id),$available_variations_arr)){
-								$var_product = wc_get_product($variation_id);
-								$var_product->delete();
+                        if (!empty($variation['id'])) {
+                            $request_variation_ids[] = absint($variation['id']);
+                        }
+                    }
+
+                    $request_variation_lookup = array_fill_keys($request_variation_ids, true);
+
+                    foreach ($available_variations_arr as $available_variation_id) {
+                        if (!isset($request_variation_lookup[$available_variation_id])) {
+                            $available_variation = wc_get_product($available_variation_id);
+                            if ($available_variation && !is_wp_error($available_variation)) {
+                                $available_variation->delete();
+                            }
+                        }
+                    }
+
+                    foreach ($variations_arr as $variation) {
+                        if (!empty($variation['id'])) {
+                            $variation_id = absint($variation['id']);
+                            if (!in_array($variation_id, $available_variations_arr, true)) {
 								continue;
 							}
-						}else{
+						}else {
 								$variation_post = [
                             	"post_title" => $product->get_title(),
                             	"post_name" =>
@@ -638,9 +732,19 @@ class ProductManagementHelper
                         	$variation_id = wp_insert_post($variation_post);
 						}
 						$variations_attr = json_decode($variation["attributes"], true);
+                        if (!is_array($variations_attr)) {
+                            $variations_attr = [];
+                        }
+                        $variationAttrArr = [];
                         foreach ($variations_attr as $item) {
-							$attribute = json_decode($item,true);
-                            $variationAttrArr[$attribute['name']] = $attribute['slug'];
+                            $attribute = is_array($item) ? $item : json_decode($item, true);
+                            if (!is_array($attribute)) {
+                                continue;
+                            }
+                            if (empty($attribute['name'])) {
+                                continue;
+                            }
+                            $variationAttrArr[$attribute['name']] = $this->resolve_variation_attribute_slug($attribute);
                         }
                         $variationProduct = new WC_Product_Variation(
                             $variation_id
@@ -655,9 +759,9 @@ class ProductManagementHelper
                             $variation["stock_quantity"]
                         );
 
-						if(isset($variationAttrArr)){
-							 $variationProduct->set_attributes($variationAttrArr);
-						}
+                        if (!empty($variationAttrArr)) {
+                            $variationProduct->set_attributes($variationAttrArr);
+                        }
 
                         $variationProduct->set_manage_stock(
                             boolval($variation["manage_stock"])

@@ -46,6 +46,26 @@ class FlutterBlog extends FlutterBaseController
 			),
 		));
 
+        register_rest_route( $this->namespace, '/blog/update', array(
+            array(
+                'methods' => "POST",
+                'callback' => array( $this, 'update_blog' ),
+                'permission_callback' => function () {
+                    return parent::checkApiPermission();
+                }
+            ),
+        ));
+
+        register_rest_route( $this->namespace, '/blog/delete', array(
+            array(
+                'methods' => "POST",
+                'callback' => array( $this, 'delete_blog' ),
+                'permission_callback' => function () {
+                    return parent::checkApiPermission();
+                }
+            ),
+        ));
+
         register_rest_route( $this->namespace,  '/blog/comment', array(
 			array(
 				'methods' => "POST",
@@ -77,6 +97,16 @@ class FlutterBlog extends FlutterBaseController
 		$helper = new FlutterBlogHelper();
         return $helper->create_blog($request);
 	}
+
+    function update_blog($request){
+        $helper = new FlutterBlogHelper();
+        return $helper->update_blog($request);
+    }
+
+    function delete_blog($request){
+        $helper = new FlutterBlogHelper();
+        return $helper->delete_blog($request);
+    }
 
     function create_comment($request){
 		$helper = new FlutterBlogHelper();

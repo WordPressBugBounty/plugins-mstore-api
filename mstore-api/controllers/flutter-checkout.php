@@ -80,11 +80,42 @@ class FlutterCheckout extends FlutterBaseController
         return $result;
     }
 
+    /**
+     * Get additional checkout fields for ThemeHigh Checkout Field Editor.
+     *
+     * ThemeHigh can expose custom "Additional" fields from WooCommerce's
+     * "order" section instead of "additional", especially on REST-driven
+     * checkout flows.
+     */
+    private function get_themehigh_additional_checkout_fields(): array
+    {
+        $additional_fields = WC()->checkout->get_checkout_fields('additional');
+        $is_themehigh_active = function_exists('is_plugin_active') && (
+            is_plugin_active('woo-checkout-field-editor-pro/checkout-form-designer.php')
+        );
+
+        if (!$is_themehigh_active) {
+            return $additional_fields;
+        }
+
+        $order_fields = WC()->checkout->get_checkout_fields('order');
+
+        if (empty($additional_fields) && empty($order_fields)) {
+            return array();
+        }
+
+        // Keep additional keys first and append missing keys from order.
+        return array_merge(
+            $additional_fields,
+            array_diff_key($order_fields, $additional_fields)
+        );
+    }
+
     public function get_checkout_fields($request)
     {
         $billing_fields = WC()->checkout->get_checkout_fields('billing');
         $shipping_fields = WC()->checkout->get_checkout_fields('shipping');
-        $additional_fields = WC()->checkout->get_checkout_fields('additional');
+        $additional_fields = $this->get_themehigh_additional_checkout_fields();
 
         $omit_fields = ['class', 'position', 'extra_class'];
 
@@ -123,26 +154,26 @@ class FlutterCheckout extends FlutterBaseController
             if (is_wp_error($user_id)) {
                 return $user_id;
             }
-            
+
             wp_set_current_user($user_id);
 
             // Get checkout fields
             $billing_fields = WC()->checkout->get_checkout_fields('billing');
             $shipping_fields = WC()->checkout->get_checkout_fields('shipping');
-            $additional_fields = WC()->checkout->get_checkout_fields('additional');
-            
+            $additional_fields = $this->get_themehigh_additional_checkout_fields();
+
             // Get billing values
             $billing_data = array();
             foreach ($billing_fields as $key => $field) {
                 $billing_data[str_replace('billing_', '', $key)] = WC()->checkout->get_value($key);
             }
-            
+
             // Get shipping values
             $shipping_data = array();
             foreach ($shipping_fields as $key => $field) {
                 $shipping_data[str_replace('shipping_', '', $key)] = WC()->checkout->get_value($key);
             }
-            
+
             // Get additional values
             $additional_data = array();
             foreach ($additional_fields as $key => $field) {

@@ -19,6 +19,21 @@ function isPurchaseCodeVerified(){
     // return md5('inspire@123%$'.$random_key) == $hash_code && isset($code) && $code != false && strlen($code) > 0;
 }
 
+function mstore_is_lddfw_active() {
+    return is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php')
+        || is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-wooCommerce.php')
+        || is_plugin_active('local-delivery-drivers-for-woocommerce-premium/local-delivery-drivers-for-woocommerce.php');
+}
+
+function mstore_is_ddwc_active() {
+    return is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php')
+        || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php');
+}
+
+function mstore_is_delivery_driver_plugin_active() {
+    return mstore_is_lddfw_active() || mstore_is_ddwc_active();
+}
+
 function verifyPurchaseCode($code)
 {
     $random_key = wp_generate_password($length = 12, $include_standard_special_chars = false);
@@ -107,7 +122,7 @@ function one_signal_push_notification($title = '', $message = '', $user_ids = ar
         $external_ids[] = in_array($id_string, $restricted_ids, true)
             ? 'user_' . $id_string // 1 → user_1
             : $id_string; // 124 → 124 (unchanged)
-	}
+    }
 
     $fields = array(
         'app_id' => $app_id,
@@ -187,11 +202,11 @@ function sendNotificationToUser($userId, $orderId, $previous_status, $next_statu
 {
     $user = get_userdata($userId);
     $title = get_option("mstore_status_order_title");
-    if (!isset($title) || $title == false) {
+    if ($title === false) {
         $title = "Order Status Changed";
     }
     $message = get_option("mstore_status_order_message");
-    if (!isset($message) || $message == false) {
+    if ($message === false) {
         $message = "Hi {{name}}, Your order: #{{orderId}} changed from {{prevStatus}} to {{nextStatus}}";
     }
     $previous_status_label = wc_get_order_status_name( $previous_status );
@@ -210,42 +225,97 @@ function sendNotificationToUser($userId, $orderId, $previous_status, $next_statu
 function trackOrderStatusChanged($id, $previous_status, $next_status)
 {
     $order = wc_get_order($id);
+    if (!$order) {
+        return;
+    }
+
+    // Listeo booking status changes already send dedicated booking notifications.
+    // Skip the generic order-status push to avoid duplicate notifications for users.
+    if (is_listeo_booking_order($order)) {
+        $status = $order->get_status();
+        sendNewOrderNotificationToDelivery($id, $status);
+        return;
+    }
+
     $userId = $order->get_customer_id();
     sendNotificationToUser($userId, $id, $previous_status, $next_status);
     $status = $order->get_status();
     sendNewOrderNotificationToDelivery($id, $status);
 }
 
+function is_listeo_booking_order($order)
+{
+    if (!($order instanceof WC_Order)) {
+        return false;
+    }
+
+    // Listeo sets booking_id on WooCommerce order meta during booking payment flow.
+    $booking_id = absint($order->get_meta('booking_id'));
+    if ($booking_id > 0) {
+        return true;
+    }
+
+    // Fallback: check if any line item is linked to a listing booking.
+    foreach ($order->get_items() as $item) {
+        if (!($item instanceof WC_Order_Item_Product)) {
+            continue;
+        }
+
+        $listing_id = absint($item->get_meta('_listing_id', true));
+        if ($listing_id > 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function _pushNotification($user_id, $title, $message, $meta_key, $data = array()){
     $is_notification_on = $meta_key == 'mstore_manager_device_token' || $meta_key == 'mstore_delivery_device_token';
     if (is_plugin_active('onesignal-free-web-push-notifications/onesignal.php')) {
-        _pushNotificationOneSignal($user_id, $title, $message, $is_notification_on);
+        return _pushNotificationOneSignal($user_id, $title, $message, $is_notification_on);
     } else {
         $deviceToken = get_user_meta($user_id, $meta_key, true);
         if (isset($deviceToken) && $deviceToken != false) {
-            _pushNotificationFirebase($user_id,$title, $message, $deviceToken, $is_notification_on, $data);
+            return _pushNotificationFirebase($user_id,$title, $message, $deviceToken, $is_notification_on, $data);
         }
     }
+    return false;
 }
 
 function pushNotificationForDeliveryBoy($user_id, $title, $message){
-    _pushNotification($user_id, $title, $message, 'mstore_delivery_device_token');
+    return _pushNotification($user_id, $title, $message, 'mstore_delivery_device_token');
 }
 
 function pushNotificationForVendor($user_id, $title, $message, $data = array()){
-    _pushNotification($user_id, $title, $message, 'mstore_manager_device_token', $data);
+    return _pushNotification($user_id, $title, $message, 'mstore_manager_device_token', $data);
 }
 
 function pushNotificationForUser($user_id, $title, $message, $data = array()){
-     _pushNotification($user_id, $title, $message, 'mstore_device_token', $data);
+     return _pushNotification($user_id, $title, $message, 'mstore_device_token', $data);
 }
 
 function sendNewOrderNotificationToDelivery($order_id, $status)
 {
     global $wpdb;
-    $title = "Order notification";
+    $title = get_option("mstore_delivery_order_title");
+    if ($title === false) {
+        $title = "Order notification";
+    }
+
     $statusLabel = wc_get_order_status_name( $status );
-    $message = "The order #{$order_id} has been {$statusLabel}";
+    if (empty($statusLabel)) {
+        $statusLabel = ucfirst(str_replace('_', ' ', $status));
+    }
+
+    $message = get_option("mstore_delivery_order_message");
+    if ($message === false) {
+        $message = "The order #{{orderId}} has been {{status}}";
+    }
+
+    $message = str_replace("{{orderId}}", $order_id, $message);
+    $message = str_replace("{{status}}", $statusLabel, $message);
+
     if (is_plugin_active('wc-frontend-manager-delivery/wc-frontend-manager-delivery.php')) {
         if ($status == 'cancelled' || $status == 'refunded') {
             $sql = "SELECT `{$wpdb->prefix}wcfm_delivery_orders`.delivery_boy FROM `{$wpdb->prefix}wcfm_delivery_orders`";
@@ -262,7 +332,7 @@ function sendNewOrderNotificationToDelivery($order_id, $status)
         }
     }
 
-    if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('local-delivery-drivers-for-woocommerce-premium/local-delivery-drivers-for-woocommerce.php')) {
+    if (mstore_is_lddfw_active()) {
         $order = wc_get_order($order_id);
         $driver_id = $order->get_meta('lddfw_driverid');
         if ($driver_id) {
@@ -290,7 +360,7 @@ function sendNewOrderNotificationToDelivery($order_id, $status)
             ));
         }
     }
-    else if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
+    else if (mstore_is_ddwc_active()) {
         $order = wc_get_order($order_id);
         $driver_id = $order->get_meta('ddwc_driver_id');
         if ($driver_id) {
@@ -324,11 +394,11 @@ function sendNewOrderNotificationToVendor($order_seller_id, $order_id)
 {
     $user = get_userdata($order_seller_id);
     $title = get_option("mstore_new_order_title");
-    if (!isset($title) || $title == false) {
+    if ($title === false) {
         $title = "New Order";
     }
     $message = get_option("mstore_new_order_message");
-    if (!isset($message) || $message == false) {
+    if ($message === false) {
         $message = "Hi {{name}}, Congratulations, you have received a new order! ";
     }
     $message = str_replace("{{name}}", $user->display_name, $message);
@@ -400,6 +470,108 @@ function trackNewOrder($order_id)
         sendNewOrderNotificationToVendor($vendor_id, $order_id);
     }
 }
+
+// ===== Booking Notifications (Listeo) =====
+
+function sendNewBookingNotificationToOwner($booking_id)
+{
+    global $wpdb;
+
+    // Get booking from custom table
+    $table_name = $wpdb->prefix . 'bookings_calendar';
+    $booking = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$table_name} WHERE ID = %d",
+        $booking_id
+    ));
+
+    if (!$booking) return;
+
+    // Get owner and listing info
+    $owner_id = $booking->owner_id;
+    $listing_id = $booking->listing_id;
+
+    if (!$owner_id || !$listing_id) return;
+
+    $owner = get_userdata($owner_id);
+    if (!$owner) return;
+
+    $listing = get_post($listing_id);
+    $listing_title = $listing ? $listing->post_title : 'listing';
+
+    // Get notification settings
+    $title = get_option("mstore_new_booking_title");
+    if (!isset($title) || $title == false) {
+        $title = "New Booking";
+    }
+
+    $message = get_option("mstore_new_booking_message");
+    if (!isset($message) || $message == false) {
+        $message = "Hi {{name}}, You have received a new booking for {{listing}}!";
+    }
+
+    // Replace placeholders
+    $message = str_replace("{{name}}", $owner->display_name, $message);
+    $message = str_replace("{{listing}}", $listing_title, $message);
+
+    // Send notification
+    pushNotificationForUser($owner_id, $title, $message);
+}
+
+function sendBookingStatusChangedNotificationToCustomer($booking_id, $new_status)
+{
+    global $wpdb;
+
+    // Get booking from custom table
+    $table_name = $wpdb->prefix . 'bookings_calendar';
+    $booking = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$table_name} WHERE ID = %d",
+        $booking_id
+    ));
+
+    if (!$booking) return;
+
+    // Get customer ID from booking
+    $customer_id = $booking->bookings_author;
+    if (!$customer_id) return;
+
+    $customer = get_userdata($customer_id);
+    if (!$customer) return;
+
+    // Get listing info
+    $listing_id = $booking->listing_id;
+    $listing_title = $listing_id ? get_the_title($listing_id) : 'listing';
+
+    // Get notification settings
+    $title = get_option("mstore_status_booking_title");
+    if (!isset($title) || $title == false) {
+        $title = "Booking Status Changed";
+    }
+
+    $message = get_option("mstore_status_booking_message");
+    if (!isset($message) || $message == false) {
+        $message = "Hi {{name}}, Your booking #{{bookingId}} for {{listing}} has been {{status}}";
+    }
+
+    // Format status for display
+    $status_display = ucfirst(str_replace('_', ' ', $new_status));
+
+    // Replace placeholders
+    $message = str_replace("{{name}}", $customer->display_name, $message);
+    $message = str_replace("{{bookingId}}", $booking_id, $message);
+    $message = str_replace("{{listing}}", $listing_title, $message);
+    $message = str_replace("{{status}}", $status_display, $message);
+
+    // Send notification
+    pushNotificationForUser($customer_id, $title, $message);
+}
+
+function trackBookingStatusChanged($booking_id, $new_status)
+{
+    // Send notification to customer when booking status changes
+    sendBookingStatusChangedNotificationToCustomer($booking_id, $new_status);
+}
+
+// ===== End Booking Notifications =====
 
 function deactiveMStoreApi()
 {
@@ -557,6 +729,43 @@ function normalizeRestrictedDays($restrictedDays) {
         return new stdClass();
     }
     return $restrictedDays;
+}
+
+function mstore_add_brand_images_to_product_response($response) {
+    if (empty($response->data['brands']) || !is_array($response->data['brands'])) {
+        return $response;
+    }
+
+    foreach ($response->data['brands'] as &$brand) {
+        if (!empty($brand['image']) || empty($brand['id'])) {
+            continue;
+        }
+
+        $thumbnail_id = absint(get_term_meta($brand['id'], 'thumbnail_id', true));
+
+        if (!$thumbnail_id) {
+            continue;
+        }
+
+        $src = wp_get_attachment_url($thumbnail_id);
+
+        if (!$src) {
+            continue;
+        }
+
+        $brand['image'] = array(
+            'id' => $thumbnail_id,
+            // esc_url_raw, not esc_url: this goes into a JSON payload, and esc_url
+            // HTML-encodes ampersands ('&' -> '&#038;'), which corrupts any
+            // attachment URL carrying query args.
+            'src' => esc_url_raw($src),
+            'name' => get_the_title($thumbnail_id),
+            'alt' => get_post_meta($thumbnail_id, '_wp_attachment_image_alt', true),
+        );
+    }
+    unset($brand);
+
+    return $response;
 }
 
 function customProductResponse($response, $object, $request)
@@ -998,6 +1207,10 @@ function customProductResponse($response, $object, $request)
         }
     }
 
+    if ($is_detail_api) {
+        $response = mstore_add_brand_images_to_product_response($response);
+    }
+
     $blackListKeys = ['yoast_head','yoast_head_json','_links'];
     $response->data = array_diff_key($response->data,array_flip($blackListKeys));
     return $response;
@@ -1246,20 +1459,36 @@ function sendNotificationForOrderStatusUpdated($order_id, $status)
 function _pushNotificationFirebase($user_id, $title, $message, $deviceToken, $is_notification_on, $data){
     $is_on = $is_notification_on == true || isNotificationEnabled($user_id);
     if($is_on){
-        FirebaseMessageHelper::push_notification($title, $message, $deviceToken, $data);
+        return FirebaseMessageHelper::push_notification($title, $message, $deviceToken, $data);
     }
+    return false;
 }
 
 function _pushNotificationOneSignal($user_id, $title, $message, $is_notification_on){
     $is_on = $is_notification_on == true || isNotificationEnabled($user_id);
     if($is_on){
-        one_signal_push_notification($title,$message,array($user_id));
+        return one_signal_push_notification($title,$message,array($user_id));
     }
+    return false;
 }
 
 function isNotificationEnabled($user_id){
     $is_on = get_user_meta($user_id, "mstore_notification_status", true);
     return  $is_on === "" || $is_on === "on";
+}
+
+if (!function_exists('mstore_calculate_percentage_change')) {
+    function mstore_calculate_percentage_change($current, $previous)
+    {
+        $current = (float) $current;
+        $previous = (float) $previous;
+
+        if ($previous == 0.0) {
+            return $current == 0.0 ? 0.0 : 100.0;
+        }
+
+        return round((($current - $previous) / $previous) * 100, 2);
+    }
 }
 
 function getCommissionOrderResponse($responseData, $vendor_id){
@@ -1400,12 +1629,29 @@ function buildCartItemData($line_items, $callback){
 
                 // Check the product variation
                 if (!empty($variationId)) {
-                    $productVariable = new WC_Product_Variable($productId);
-                    $listVariations = $productVariable->get_available_variations();
-                    foreach ($listVariations as $vartiation => $value) {
-                        if ($variationId == $value['variation_id']) {
-                            $attributes = array_merge($value['attributes'], $attributes);
-                            $callback($productId, $quantity, $variationId, $attributes, array());
+                    $variation_id = absint($variationId);
+                    $variation_product = $variation_id ? wc_get_product($variation_id) : false;
+                    $matched_variation = false;
+
+                    if ($variation_product instanceof WC_Product_Variation && (int)$variation_product->get_parent_id() === (int)$productId) {
+                        $matched_variation = true;
+                        $variation_attributes = $variation_product->get_variation_attributes();
+                        $attributes = array_merge($variation_attributes, $attributes);
+
+                        $callback($productId, $quantity, $variation_id, $attributes, array());
+                    }
+
+                    if (!$matched_variation && $variation_id > 0) {
+                        $productVariable = new WC_Product_Variable($productId);
+                        $listVariations = $productVariable->get_available_variations();
+
+                        foreach ($listVariations as $value) {
+                            if ($variation_id == $value['variation_id']) {
+                                $matched_variation = true;
+                                $attributes = array_merge($value['attributes'], $attributes);
+                                $callback($productId, $quantity, $variation_id, $attributes, array());
+                                break;
+                            }
                         }
                     }
                 } else {
@@ -1440,11 +1686,112 @@ function is_base64($s){
     return true;
 }
 
-function get_header_user_cookie($cookie){
+/**
+ * Decode a base64 auth cookie sent by the app (header or query param).
+ *
+ * - A `+` inside the base64 payload may arrive as a space when sent via
+ *   query string, so restore it before decoding.
+ * - Use rawurldecode() instead of urldecode(): urldecode() converts `+`
+ *   to a space, which corrupts cookies of users whose user_login contains
+ *   `+` (e.g. phone-number accounts created by the Digits plugin like
+ *   `+963xxxxxxxxx`), causing false `expired_cookie` errors.
+ */
+function mstore_decode_user_cookie($token)
+{
+    if (empty($token) || !is_string($token)) {
+        return $token;
+    }
+    $token = str_replace(' ', '+', $token);
+    return rawurldecode(base64_decode($token));
+}
+
+function get_header_user_cookie($cookie)
+{
     if (is_base64($cookie)) {
-        return urldecode(base64_decode($cookie));
-    }else{
+        return mstore_decode_user_cookie($cookie);
+    } else {
         return $cookie;
     }
+}
+
+// Polyfill for getallheaders() in case running on Nginx/PHP-FPM
+if (!function_exists('getallheaders')) {
+    function getallheaders()
+    {
+        $headers = [];
+        foreach ($_SERVER as $name => $value) {
+            if (substr($name, 0, 5) == 'HTTP_') {
+                $headers[str_replace(' ', '-', ucwords(strtolower(str_replace('_', ' ', substr($name, 5)))))] = $value;
+            }
+        }
+        return $headers;
+    }
+}
+
+/**
+ * Whether the payment endpoints must be given a matching order key.
+ *
+ * The payment routes are registered with checkApiPermission(), which resolves to
+ * isPurchaseCodeVerified() - a site-global licence flag, not a per-caller or
+ * per-order check. The order key is the credential WooCommerce itself uses to
+ * grant access to a single order, and the app already receives it when the order
+ * is created, so it is the natural authorisation token for these routes.
+ *
+ * Ships disabled so existing app builds keep working. Turn it on once the
+ * Flutter app sends order_key with the payment callbacks:
+ *
+ *     update_option('mstore_api_enforce_payment_order_key', 'yes');
+ */
+function mstore_api_enforce_payment_order_key()
+{
+    return apply_filters(
+        'mstore_api_enforce_payment_order_key',
+        get_option('mstore_api_enforce_payment_order_key', 'no') === 'yes'
+    );
+}
+
+/**
+ * Authorise a payment callback against the order it claims to pay for.
+ *
+ * A supplied key is always checked, whether or not enforcement is on: a correct
+ * client sends the right key, so rejecting a wrong one costs nothing and closes
+ * the hole early for clients that already send it.
+ *
+ * @param WC_Order $order
+ * @param array    $body Decoded request body.
+ * @param bool     $require_key Whether this endpoint must always provide a key.
+ * @return true|WP_Error
+ */
+function mstore_api_check_payment_order_key($order, $body, $require_key = false)
+{
+    if (!($order instanceof WC_Order)) {
+        return new WP_Error('order_not_found', 'Order not found.', array('status' => 404));
+    }
+
+    $key = isset($body['order_key']) && is_scalar($body['order_key'])
+        ? (string) $body['order_key']
+        : '';
+
+    if ($key === '') {
+        if ($require_key || mstore_api_enforce_payment_order_key()) {
+            return new WP_Error(
+                'order_key_required',
+                'order_key is required to confirm this payment.',
+                array('status' => 401)
+            );
+        }
+        return true;
+    }
+
+    if (!hash_equals((string) $order->get_order_key(), $key)) {
+        $order->add_order_note('Security Alert: payment callback presented an invalid order key. Payment not applied.');
+        return new WP_Error(
+            'invalid_order_key',
+            'The order key does not match this order.',
+            array('status' => 403)
+        );
+    }
+
+    return true;
 }
 ?>

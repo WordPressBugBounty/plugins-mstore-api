@@ -347,16 +347,34 @@ class DeliveryWCFMHelper
     }
 
 
-    function update_delivery_order($order_id)
+    function update_delivery_order($order_id, $user_id = 0)
     {
         global $WCFM, $WCFMd, $wpdb;
+
+        $user_id = absint($user_id);
+        if (!$user_id) {
+            return new WP_Error('no_permission', 'This order is not assigned to you.', array('status' => 403));
+        }
 
         $delivered_not_notified = false;
         $sql = "SELECT * FROM `{$wpdb->prefix}wcfm_delivery_orders`";
         $sql .= " WHERE 1=1";
         $sql .= " AND order_id = %s";
-        $sql = $wpdb->prepare($sql, $order_id);
+
+        // Scope to the calling delivery boy unless the caller manages the store,
+        // so one driver cannot mark another driver's delivery as done.
+        if (!user_can($user_id, 'manage_woocommerce')) {
+            $sql .= " AND delivery_boy = %d";
+            $sql = $wpdb->prepare($sql, $order_id, $user_id);
+        } else {
+            $sql = $wpdb->prepare($sql, $order_id);
+        }
+
         $delivery_details = $wpdb->get_results($sql);
+
+        if (empty($delivery_details)) {
+            return new WP_Error('no_permission', 'This order is not assigned to you.', array('status' => 403));
+        }
 
         if (!empty($delivery_details)) {
             foreach ($delivery_details as $delivery_detail) {

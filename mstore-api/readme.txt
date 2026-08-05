@@ -2,7 +2,7 @@
 Contributors:      inspireui
 Tags:              flutter, app builder, app creator, mobile app builder, woocommerce app
 Requires at least: 4.4
-Stable tag:        4.20.0
+Stable tag:        4.21.1
 Tested up to:      7.0
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
@@ -48,6 +48,34 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 1. Click Install.
 
 == Changelog ==
+= 4.21.1 =
+  * Security: Prevent delivery and wallet order-completion bypasses and harden the icon include
+  * Restrict customer order cancellation to pending or failed orders
+  * Improve compatibility for legacy order status updates
+
+= 4.21.0 =
+  * Add Listeo listing type fields endpoints
+  * Add support for children and animals booking options
+  * Add owner and customer push notifications for Listeo bookings
+  * Add brand image field to product detail responses
+  * Add user_created flag to registration responses
+  * Add Order Delivery Date Pro for Woo v2 endpoint
+  * Support WCFM auto-approval during vendor registration
+  * Update Local Delivery Drivers plugin main file path
+  * Improve booking status notification deduplication
+  * Improve checkout field handling for ThemeHigh additional fields
+  * Fix week_5_orders in flutter_get_sale_stats
+  * Fix is_driver_available response normalization
+  * Fix date field formatting for vendor-admin products
+  * Fix false expired_cookie responses for Digits usernames containing "+"
+  * Fix vendor product variation sync for Arabic attributes
+  * Improve cart variation lookup performance during checkout
+  * Fix Firebase phone login account matching after JWT updates
+  * Security: Fix Firebase JWT signature, audience validation, and key caching
+  * Security: Enforce S2S verification for payment gateways and per-order ExpressPay authorization
+  * Security: Prevent unauthorized order updates, deletions, and status escalation
+  * Security: Restrict vendor order access and prevent product review approval spoofing
+
 = 4.20.0 =
   * Add tiered_prices endpoint
   * Add catalog visibility option in product create/update

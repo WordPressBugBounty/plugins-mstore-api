@@ -1,7 +1,7 @@
 
 <?php include_once(plugin_dir_path(dirname(dirname(__FILE__))) . 'functions/index.php'); ?>
 <?php include_once(plugin_dir_path(dirname(dirname(__FILE__))) . 'controllers/helpers/firebase-message-helper.php'); ?>
-<!-- 
+<!--
     <div class="wrap">
         <div class="thanks">
             <p>Thank you for installing Mstore API plugins.</p>
@@ -17,6 +17,10 @@
         </div>
     </div> -->
 <?php
+
+// ==========================================================================
+// Purchase code verification
+// ==========================================================================
 $verified = isPurchaseCodeVerified();
 if (!isset($verified) || $verified === "" || $verified === false) {
     ?>
@@ -58,7 +62,7 @@ if (!isset($verified) || $verified === "" || $verified === false) {
 
 <a href="https://help.market.envato.com/hc/en-us/articles/202822600-Where-Is-My-Purchase-Code-" class="font-medium text-green-600 hover:underline" target="_blank">https://help.market.envato.com/hc/en-us/articles/202822600-Where-Is-My-Purchase-Code-</a>
         </div>
-        
+
         <button type="submit"  name='but_verify' class="mstore-button-class">Verify</button>
     </form>
     <?php
@@ -72,6 +76,9 @@ if (isset($verified) && $verified == "1") {
     </div>
     <form action="" method="post">
         <?php
+        // ==========================================================================
+        // General settings
+        // ==========================================================================
         $limit = get_option("mstore_limit_product");
         ?>
         <div class="form-group" style="margin-top:10px;margin-bottom:40px">
@@ -80,13 +87,16 @@ if (isset($verified) && $verified == "1") {
         </div>
     </form>
 
+    // ==========================================================================
+    // Firebase configuration
+    // ==========================================================================
     <div class="thanks mb-3">
         <p>The private key firebase is used to push notification when order status changed.</p>
         <p style="font-size: 12px;">(Firebase project -> Project Settings -> Service accounts -> Firebase Admin SDK -> Generate new private key)</p>
     </div>
     <form id="firebaseFileToUploadForm" action="" enctype="multipart/form-data" method="post">
         <?php wp_nonce_field( 'upload_firebase_file', 'upload_firebase_file_nonce' ); ?>
-        <?php 
+        <?php
         if(FirebaseMessageHelper::is_file_existed()){
             ?>
             <div class="flex-row items-center justify-between">
@@ -122,6 +132,9 @@ if (isset($verified) && $verified == "1") {
         ?>
     </form>
 
+    // ==========================================================================
+    // Order notification settings
+    // ==========================================================================
     <p class="mt-5">New Order Message</p>
     <form action="" method="post">
         <?php
@@ -163,10 +176,101 @@ if (isset($verified) && $verified == "1") {
         </div>
     </form>
 
+    // ==========================================================================
+    // Delivery notification settings
+    // ==========================================================================
+    <p>Delivery Boy Order Status Message</p>
+    <form action="" method="post">
+        <?php
+        $deliveryOrderTitle = get_option("mstore_delivery_order_title");
+        if (!isset($deliveryOrderTitle) || $deliveryOrderTitle == false) {
+            $deliveryOrderTitle = "Order notification";
+        }
+        $deliveryOrderMsg = get_option("mstore_delivery_order_message");
+        if (!isset($deliveryOrderMsg) || $deliveryOrderMsg == false) {
+            $deliveryOrderMsg = "The order #{{orderId}} has been {{status}}";
+        }
+        $deliveryOrderUnassignMsg = get_option("mstore_delivery_order_unassign_message");
+        if (!isset($deliveryOrderUnassignMsg) || $deliveryOrderUnassignMsg == false) {
+            $deliveryOrderUnassignMsg = "The order #{{orderId}} has been unassigned from you";
+        }
+        ?>
+        <div class="form-group" style="margin-top:10px;">
+            <input type="text" placeholder="Title" data-nonce="<?php echo wp_create_nonce('update_delivery_order_title'); ?>" value="<?php echo esc_attr($deliveryOrderTitle); ?>"
+                   class="mstore-input-class mstore-update-delivery-order-title">
+        </div>
+        <div class="form-group" style="margin-top:10px;">
+            <textarea placeholder="Message" data-nonce="<?php echo wp_create_nonce('update_delivery_order_message'); ?>" class="mstore-input-class mstore-update-delivery-order-message"
+                      style="height: 120px"><?php echo esc_textarea($deliveryOrderMsg); ?></textarea>
+        </div>
+        <div class="form-group" style="margin-top:10px;margin-bottom:40px">
+            <textarea placeholder="Message when unassigned" data-nonce="<?php echo wp_create_nonce('update_delivery_order_unassign_message'); ?>" class="mstore-input-class mstore-update-delivery-order-unassign-message"
+                      style="height: 120px"><?php echo esc_textarea($deliveryOrderUnassignMsg); ?></textarea>
+        </div>
+    </form>
+    <?php
+    // ==========================================================================
+    // Booking notification settings (Listeo)
+    // ==========================================================================
+    // Check if Listeo theme is active
+    $theme = wp_get_theme(get_template());
+    $template = strtolower($theme->get('Name'));
+
+    $is_listeo = strpos($template, 'listeo') !== false;
+
+    if ($is_listeo) {
+        ?>
+        <p class="mt-5">New Booking Message (for Listeo theme)</p>
+        <form action="" method="post">
+            <?php
+            $newBookingTitle = get_option("mstore_new_booking_title");
+            if (!isset($newBookingTitle) || $newBookingTitle == false) {
+                $newBookingTitle = "New Booking";
+            }
+            $newBookingMsg = get_option("mstore_new_booking_message");
+            if (!isset($newBookingMsg) || $newBookingMsg == false) {
+                $newBookingMsg = "Hi {{name}}, You have received a new booking for {{listing}}!";
+            }
+            ?>
+            <input type="text" class="mstore-input-class mstore-update-new-booking-title" placeholder="Title" data-nonce="<?php echo wp_create_nonce('update_new_booking_title'); ?>" value="<?php echo esc_attr($newBookingTitle); ?>">
+            <div class="form-group" style="margin-top:10px;margin-bottom:40px">
+                <textarea placeholder="Message" data-nonce="<?php echo wp_create_nonce('update_new_booking_message'); ?>" class="mstore-update-new-booking-message mstore-input-class"
+                          style="height: 120px"><?php echo esc_textarea($newBookingMsg); ?></textarea>
+            </div>
+        </form>
+
+        <p>Booking Status Changed Message (for Listeo theme)</p>
+        <form action="" method="post">
+            <?php
+            $statusBookingTitle = get_option("mstore_status_booking_title");
+            if (!isset($statusBookingTitle) || $statusBookingTitle == false) {
+                $statusBookingTitle = "Booking Status Changed";
+            }
+            $statusBookingMsg = get_option("mstore_status_booking_message");
+            if (!isset($statusBookingMsg) || $statusBookingMsg == false) {
+                $statusBookingMsg = "Hi {{name}}, Your booking #{{bookingId}} for {{listing}} has been {{status}}";
+            }
+            ?>
+            <div class="form-group" style="margin-top:10px;">
+                <input type="text" placeholder="Title" data-nonce="<?php echo wp_create_nonce('update_status_booking_title'); ?>" value="<?php echo esc_attr($statusBookingTitle); ?>"
+                       class="mstore-input-class mstore-update-status-booking-title">
+            </div>
+            <div class="form-group" style="margin-top:10px;margin-bottom:40px">
+                <textarea placeholder="Message" data-nonce="<?php echo wp_create_nonce('update_status_booking_message'); ?>" class="mstore-input-class mstore-update-status-booking-message"
+                          style="height: 120px"><?php echo esc_textarea($statusBookingMsg); ?></textarea>
+            </div>
+        </form>
+        <?php
+    }
+    ?>
+
+    // ==========================================================================
+    // Apple Sign-In configuration
+    // ==========================================================================
     <p>The apple key is used to login on the app via Apple Sign In.</p>
     <form id="appleFileToUploadForm" action="" enctype="multipart/form-data" method="post">
         <?php wp_nonce_field( 'upload_apple_file', 'upload_apple_file_nonce' ); ?>
-        <?php 
+        <?php
         if(FlutterAppleSignInUtils::is_file_existed()){
             ?>
             <div class="flex-row items-center justify-between">
@@ -202,6 +306,9 @@ if (isset($verified) && $verified == "1") {
         ?>
     </form>
 
+    // ==========================================================================
+    // FluxBuilder upload token
+    // ==========================================================================
     <p class="mt-5">This token is used for uploading the config files on FluxBuilder.</p>
     <form action="" method="post">
     <?php wp_nonce_field( 'generate_token', 'generate_token_nonce' ); ?>
@@ -218,10 +325,15 @@ if (isset($verified) && $verified == "1") {
             ?>
         <button type="submit" class="mstore-button-class" name='but_generate'>Generate Token</button>
     </form>
-    
+
     <p class="mt-5">This setting help to speed up the mobile app performance, upload the config_xx.json</p>
     <?php
+
+    // ==========================================================================
+    // Config JSON file management
+    // ==========================================================================
     FlutterUtils::create_json_folder();
+    // Existing config files
     $configs = FlutterUtils::get_all_json_files();
     if (!empty($configs)) {
         ?>
@@ -262,6 +374,7 @@ if (isset($verified) && $verified == "1") {
         <?php
     }
     ?>
+    // Upload new config file
     <form action="" enctype="multipart/form-data" method="post">
     <?php wp_nonce_field( 'upload_file', 'upload_file_nonce' ); ?>
     <input type="file" id="fileToUpload" accept=".json" name="fileToUpload" class="mstore-file-input-class" data-nonce="<?php echo wp_create_nonce('upload_file'); ?>"/>

@@ -2,6 +2,27 @@
 
 class FlutterBlogHelper
 {
+    private function get_authenticated_user_id($request)
+    {
+        $raw_token = $request->get_param('token');
+        if ($raw_token === null && isset($request['token'])) {
+            $raw_token = $request['token'];
+        }
+
+        $token = sanitize_text_field($raw_token);
+        if (empty($token)) {
+            return new WP_Error("unauthorized", "You are not allowed to do this", array('status' => 401));
+        }
+
+        $cookie = urldecode(base64_decode($token));
+        $user_id = validateCookieLogin($cookie);
+        if (is_wp_error($user_id)) {
+            return $user_id;
+        }
+
+        return (int) $user_id;
+    }
+
     public function get_blog_from_dynamic_link($request)
     {
         if (isset($request['url'])) {
@@ -22,31 +43,29 @@ class FlutterBlogHelper
     }
 
     public function create_blog($request){
-		$title = sanitize_text_field($request['title']);
-        $content = null;
+        $title = isset($request['title']) ? sanitize_text_field($request['title']) : '';
+        $author = isset($request['author']) ? intval($request['author']) : 0;
+        $status = isset($request['status']) ? sanitize_text_field($request['status']) : 'draft';
+        $categories = isset($request['categories']) ? sanitize_text_field($request['categories']) : '';
+        $image = isset($request['image']) ? sanitize_text_field($request['image']) : '';
+
+        $content = '';
         if (isset($request['content'])) {
             if (!is_scalar($request['content'])) {
                 return new WP_Error("invalid_content", "Content must be a string.", array('status' => 400));
             }
             $content = wp_kses_post(wp_unslash((string) $request['content']));
         }
-		$author = sanitize_text_field($request['author']);
-		$date = sanitize_text_field($request['date']);
-		$status = sanitize_text_field($request['status']);
-		$categories = sanitize_text_field($request['categories']);
-		$token = sanitize_text_field($request['token']);
-		$image = sanitize_text_field($request['image']);
 
-        if (isset($token)) {
-            $cookie = urldecode(base64_decode($token));
-        } else {
-            return new WP_Error("unauthorized", "You are not allowed to do this", array('status' => 401));
+        if ($author <= 0) {
+            return new WP_Error("invalid_author", "Invalid author", array('status' => 400));
         }
-        $user_id = validateCookieLogin($cookie);
+
+        $user_id = $this->get_authenticated_user_id($request);
         if (is_wp_error($user_id)) {
             return $user_id;
         }
-		if($user_id != $author){
+        if ((int) $user_id !== (int) $author) {
             return new WP_Error("unauthorized", "You are not allowed to do this", array('status' => 401));
 		}
 
@@ -80,7 +99,7 @@ class FlutterBlogHelper
             wp_set_post_categories($post_id, array(intval($categories)), false);
         }
 
-		if(isset($image)){
+		if (!empty($image)) {
             $img_id = upload_image_from_mobile($image, 0 ,$user_id);
             if($img_id != false){
                 set_post_thumbnail($post_id, $img_id);
@@ -96,17 +115,129 @@ class FlutterBlogHelper
         );
 	}
 
+    public function update_blog($request){
+        $post_id = isset($request['id']) ? intval($request['id']) : 0;
+        if ($post_id <= 0) {
+            return new WP_Error("invalid_request", "Invalid post id", array('status' => 400));
+        }
+        $title = isset($request['title']) ? sanitize_text_field($request['title']) : null;
+        $content = null;
+        if (isset($request['content'])) {
+            if (!is_scalar($request['content'])) {
+                return new WP_Error("invalid_content", "Content must be a string.", array('status' => 400));
+            }
+            $content = wp_kses_post(wp_unslash((string) $request['content']));
+        }
+        $status = isset($request['status']) ? sanitize_text_field($request['status']) : null;
+        $categories = isset($request['categories']) ? sanitize_text_field($request['categories']) : null;
+        $image = isset($request['image']) ? sanitize_text_field($request['image']) : '';
+
+        $user_id = $this->get_authenticated_user_id($request);
+        if (is_wp_error($user_id)) {
+            return $user_id;
+        }
+
+        $post = get_post($post_id);
+        if (empty($post) || $post->post_type !== 'post') {
+            return new WP_Error("invalid_post", "Post not found", array('status' => 404));
+        }
+
+        wp_set_current_user($user_id);
+        if ((int) $post->post_author !== (int) $user_id || !current_user_can('edit_post', $post_id)) {
+            return new WP_Error("unauthorized", "You are not allowed to edit this post", array('status' => 401));
+        }
+
+        $allowed_statuses = array('publish', 'draft', 'pending', 'private', 'future');
+        if ($status === 'publish' || $status === 'published') {
+            if (!current_user_can('publish_posts')) {
+                return new WP_Error("unauthorized", "You are not allowed to publish this post", array('status' => 401));
+            }
+            $status = 'publish';
+        } elseif (!empty($status) && !in_array($status, $allowed_statuses)) {
+            $status = 'draft';
+        }
+
+        $my_post = array(
+            'ID' => $post_id,
+        );
+
+        if ($title !== null) {
+            $my_post['post_title'] = $title;
+        }
+
+        if ($content !== null) {
+            $my_post['post_content'] = $content;
+        }
+
+        if (!empty($status)) {
+            $my_post['post_status'] = $status;
+        }
+
+        $updated_post_id = wp_update_post($my_post, true);
+        if (is_wp_error($updated_post_id)) {
+            return $updated_post_id;
+        }
+
+        if ($categories !== null) {
+            $category_ids = empty($categories) ? array() : array(intval($categories));
+            wp_set_post_categories($post_id, $category_ids, false);
+        }
+
+        if (!empty($image)) {
+            $img_id = upload_image_from_mobile($image, 0, $user_id);
+            if ($img_id != false) {
+                set_post_thumbnail($post_id, $img_id);
+            }
+        }
+
+        return new WP_REST_Response(
+            [
+                "status" => "success",
+                "response" => '',
+            ],
+            200
+        );
+    }
+
+    public function delete_blog($request){
+        $post_id = intval($request->get_param('id'));
+        if ($post_id <= 0) {
+            return new WP_Error("invalid_request", "Invalid post id", array('status' => 400));
+        }
+        $user_id = $this->get_authenticated_user_id($request);
+        if (is_wp_error($user_id)) {
+            return $user_id;
+        }
+
+        $post = get_post($post_id);
+        if (empty($post) || $post->post_type !== 'post') {
+            return new WP_Error("invalid_post", "Post not found", array('status' => 404));
+        }
+
+        wp_set_current_user($user_id);
+        if ((int) $post->post_author !== (int) $user_id || !current_user_can('delete_post', $post_id)) {
+            return new WP_Error("unauthorized", "You are not allowed to delete this post", array('status' => 401));
+        }
+
+        $deleted = wp_delete_post($post_id, false);
+        if ($deleted === false || is_wp_error($deleted)) {
+            return new WP_Error("delete_failed", "Could not delete post", array('status' => 400));
+        }
+
+        return new WP_REST_Response(
+            [
+                "status" => "success",
+                "response" => '',
+            ],
+            200
+        );
+    }
+
     public function create_comment($request){
 		$content = sanitize_text_field($request['content']);
-		$token = sanitize_text_field($request['token']);
 		$post_id = sanitize_text_field($request['post_id']);
 
-        if (!empty($token)) {
-            $cookie = urldecode(base64_decode($token));
-        } else {
-            return new WP_Error("unauthorized", "You are not allowed to do this", array('status' => 401));
-        }
-        $user_id = validateCookieLogin($cookie);
+        $user_id = $this->get_authenticated_user_id($request);
         if (is_wp_error($user_id)) {
             return $user_id;
         }
@@ -137,14 +268,8 @@ class FlutterBlogHelper
 
 	public function get_user_posts($request){
 		$author = sanitize_text_field($request['author']);
-		$token = sanitize_text_field($request['token']);
 
-        if (empty($token)) {
-            return new WP_Error("unauthorized", "You are not allowed to do this", array('status' => 401));
-        }
-
-        $cookie = urldecode(base64_decode($token));
-        $user_id = validateCookieLogin($cookie);
+        $user_id = $this->get_authenticated_user_id($request);
         if (is_wp_error($user_id)) {
             return $user_id;
         }

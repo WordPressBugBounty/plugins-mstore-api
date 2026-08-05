@@ -147,7 +147,11 @@ class FirebaseMessageHelper
             $result = wp_remote_retrieve_body($response);
             $result = json_decode($result, true);
             if($statusCode != 200 && is_array($result) && isset($result['error'])){
-                return new WP_Error(400, $result['error']['message'], array('status' => 400));
+                $error = $result['error'];
+                return new WP_Error(400, $error['message'], array(
+                    'code' => $error['code'] ?? null,
+                    'fcm_status' => $error['status'] ?? null,
+                ));
             }
             return $statusCode == 200;
         }

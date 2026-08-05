@@ -2,6 +2,94 @@
 
 class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
 {
+    private function is_themehigh_checkout_field_editor_active() {
+        return function_exists('is_plugin_active') && (
+            is_plugin_active('woo-checkout-field-editor-pro/checkout-form-designer.php')
+        );
+    }
+
+    private function normalize_themehigh_checkout_meta($params) {
+        if (!$this->is_themehigh_checkout_field_editor_active()) {
+            return $params;
+        }
+
+        if (!isset($params['meta_data']) || !is_array($params['meta_data'])) {
+            return $params;
+        }
+
+        $normalized_meta = array();
+
+        foreach ($params['meta_data'] as $meta_item) {
+            if (!is_array($meta_item) || !isset($meta_item['key'])) {
+                continue;
+            }
+
+            $raw_key = sanitize_text_field($meta_item['key']);
+            $value = isset($meta_item['value']) ? $meta_item['value'] : '';
+
+            if ($raw_key === '') {
+                continue;
+            }
+
+            // App payload for QuadLayers uses "_additional_*"; ThemeHigh reads "additional_*".
+            $normalized_key = strpos($raw_key, '_additional_') === 0 ? ltrim($raw_key, '_') : $raw_key;
+
+            // Keep WooCommerce note in customer_note and avoid duplicating it in meta fields.
+            if ($normalized_key === 'additional_order_comments' || $normalized_key === 'order_comments') {
+                if (!isset($params['customer_note']) || $params['customer_note'] === '') {
+                    $params['customer_note'] = is_scalar($value) ? sanitize_text_field((string) $value) : '';
+                }
+                continue;
+            }
+
+            $normalized_meta[$normalized_key] = array(
+                'key' => $normalized_key,
+                'value' => $value,
+            );
+        }
+
+        $params['meta_data'] = array_values($normalized_meta);
+        return $params;
+    }
+
+    private function persist_themehigh_additional_meta_to_order($order, $params) {
+        if (!$this->is_themehigh_checkout_field_editor_active()) {
+            return;
+        }
+
+        if (!is_a($order, 'WC_Order') || !isset($params['meta_data']) || !is_array($params['meta_data'])) {
+            return;
+        }
+
+        $has_changes = false;
+
+        foreach ($params['meta_data'] as $meta_item) {
+            if (!is_array($meta_item) || !isset($meta_item['key'])) {
+                continue;
+            }
+
+            $key = sanitize_text_field($meta_item['key']);
+            if ($key === '' || strpos($key, 'additional_') !== 0) {
+                continue;
+            }
+            if ($key === 'additional_order_comments' || $key === 'order_comments') {
+                continue;
+            }
+
+            $value = isset($meta_item['value']) ? $meta_item['value'] : '';
+            if (is_array($value) || is_object($value)) {
+                $value = wp_json_encode($value);
+            }
+
+            $order->update_meta_data($key, $value);
+            $has_changes = true;
+        }
+
+        if ($has_changes) {
+            $order->save();
+        }
+    }
+
 
     /**
      * Endpoint namespace
@@ -52,7 +140,7 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
                 'schema' => array($this, 'get_public_item_schema'),
             )
         );
-		
+
 		register_rest_route(
             $this->namespace,
             '/update' . '/(?P<id>[\d]+)',
@@ -119,34 +207,102 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
     {
         $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
         if (!isset($cookie) || $cookie == null) {
-            return false;
+            return new WP_Error('rest_unauthenticated', 'Missing or invalid authentication cookie.', array('status' => 401));
         }
 
         $user_id = validateCookieLogin($cookie);
         if (is_wp_error($user_id)) {
-            return false;
+            return $user_id; // validateCookieLogin already returns WP_Error on failure
         }
 
+        $order = wc_get_order( (int) $request['id'] );
+
+        if ( ! $order ) {
+            return new WP_Error('rest_order_invalid', 'Invalid order ID.', array('status' => 404));
+        }
+
+        // Allow admins or shop managers (bypass ownership and field restrictions)
+        if ( user_can( $user_id, 'edit_shop_orders' ) ) {
+            wp_set_current_user($user_id);
+            return true;
+        }
+
+        $params  = $request->get_params();
+
+        // Only allow cancellation if the order is currently 'pending' or 'failed'.
+        if (isset($params['status']) && $params['status'] === 'cancelled' && !in_array($order->get_status(), array('pending', 'failed'))) {
+            return new WP_Error('rest_forbidden_status', 'You can only cancel pending or failed orders.', array('status' => 403));
+        }
+
+        // Keep status updates temporarily for backward compatibility with legacy apps.
+        $blocked = array('set_paid', 'total', 'line_items', 'shipping_lines', 'fee_lines', 'coupon_lines', 'customer_id', 'transaction_id');
+
+        foreach ($blocked as $field) {
+            if (isset($params[$field])) {
+                return new WP_Error('rest_forbidden_field', 'You do not have permission to update the ' . $field . ' field.', array('status' => 403));
+            }
+        }
+
+        // Check order ownership & secure guest access
+        $customer_id     = (int) $order->get_customer_id();
+        $current_user_id = (int) $user_id;
+
+        if ( $customer_id === 0 ) {
+            // Guest order: validate via order_key
+            $key = $request->get_param('order_key');
+            if ( empty($key) || !hash_equals($order->get_order_key(), $key) ) {
+                return new WP_Error('rest_forbidden_guest', 'Invalid order key for guest order.', array('status' => 403));
+            }
+        } else if ( $customer_id !== $current_user_id ) {
+            // Logged-in user ownership check
+            return new WP_Error('rest_forbidden_owner', 'You do not have permission to edit this order.', array('status' => 403));
+        }
+
+        // Set current user only after all authorization checks pass
         wp_set_current_user($user_id);
+
         return true;
     }
 
     function custom_delete_item_permissions_check($request)
     {
         $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
-        $json = file_get_contents('php://input');
-        $params = json_decode($json, TRUE);
-        if (isset($cookie) && $cookie != null) {
-            $user_id = validateCookieLogin($cookie);
-            if (is_wp_error($user_id)) {
-                return false;
+        if (!isset($cookie) || $cookie == null) {
+            return new WP_Error('rest_unauthenticated', 'Missing or invalid authentication cookie.', array('status' => 401));
+        }
+
+        $user_id = validateCookieLogin($cookie);
+        if (is_wp_error($user_id)) {
+            return $user_id;
+        }
+
+        $order = wc_get_order( (int) $request['id'] );
+
+        if ( ! $order ) {
+            return new WP_Error('rest_order_invalid', 'Invalid order ID.', array('status' => 404));
+        }
+
+        // Allow admins or shop managers
+        if ( user_can( $user_id, 'edit_shop_orders' ) ) {
+            return true;
+        }
+
+        // Check order ownership & secure guest access
+        $customer_id     = (int) $order->get_customer_id();
+        $current_user_id = (int) $user_id;
+
+        if ( $customer_id === 0 ) {
+            // Guest order: validate via order_key
+            $key = $request->get_param('order_key');
+            if ( empty($key) || !hash_equals($order->get_order_key(), $key) ) {
+                return new WP_Error('rest_forbidden_guest', 'Invalid order key for guest order deletion.', array('status' => 403));
             }
-            $order = wc_get_order($request['id'] );
-            if($order != false){
-                return  $order->get_customer_id() == 0 || $order->get_customer_id() == $user_id;
-            }
-        } 
-        return false;
+        } else if ( $customer_id !== $current_user_id ) {
+            // Logged-in user ownership check
+            return new WP_Error('rest_forbidden_owner', 'You do not have permission to delete this order.', array('status' => 403));
+        }
+
+        return true;
     }
 
     function get_items($request)
@@ -168,6 +324,9 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
     function create_new_order($request)
     {
         $params = $request->get_body_params();
+        $params = $this->normalize_themehigh_checkout_meta($params);
+        $request->set_body_params($params);
+
         if (isset($params['fee_lines']) && count($params['fee_lines']) > 0) {
             $fee_name = $params['fee_lines'][0]['name'];
             if ($fee_name == 'Via Wallet') {
@@ -352,6 +511,8 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
 
         // Send the customer invoice email.
        	$order = wc_get_order( $data['id'] );
+        // Add additional field in order detail
+        $this->persist_themehigh_additional_meta_to_order($order, $params);
 
         if ($order->get_payment_method() == 'cod') {
            if ( $order->get_total() > 0 ) {
@@ -376,18 +537,18 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
             $order->payment_complete();
             $order->add_order_note('Tap payment successful.<br/>Tap ID: '.$params['transaction_id']);
         }
-		
+
         //update order type for wholesale
         if (class_exists('WooCommerceWholeSalePrices')) {
             global $wc_wholesale_prices;
             $wc_wholesale_prices->wwp_order->add_order_type_meta_to_wc_orders($data['id']);
         }
-        
+
         //add order to wcfm_marketplace_orders table to show order on the vendor dashboard
         if(class_exists('WCFMmp')) {
             do_action('wcfm_manual_order_processed', $data['id'], $order, $order);
         }
-        
+
         return  $response;
     }
 

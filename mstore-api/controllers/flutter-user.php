@@ -2,6 +2,7 @@
 require_once(__DIR__ . '/flutter-base.php');
 require_once(__DIR__ . '/helpers/apple-sign-in-helper.php');
 require_once(__DIR__ . '/helpers/facebook-jwt-helper.php');
+require_once(__DIR__ . '/helpers/firebase-phone-auth-helper.php');
 
 class FlutterUserController extends FlutterBaseController
 {
@@ -65,6 +66,43 @@ class FlutterUserController extends FlutterBaseController
                 return wc_clean($value);
             default:
                 return sanitize_text_field($value);
+        }
+    }
+
+    /// Jetpack -> Settings -> Security -> Account Protection
+    private function is_jetpack_account_protection_enabled()
+    {
+        if (!class_exists('Automattic\\Jetpack\\Account_Protection\\Account_Protection')) {
+            return false;
+        }
+
+        try {
+            $account_protection = Automattic\Jetpack\Account_Protection\Account_Protection::instance();
+            if (!method_exists($account_protection, 'is_enabled')) {
+                return false;
+            }
+
+            return (bool) $account_protection->is_enabled();
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    private function is_jetpack_password_compromised($password)
+    {
+        if (!$this->is_jetpack_account_protection_enabled()) {
+            return false;
+        }
+
+        if (!class_exists('Automattic\\Jetpack\\Account_Protection\\Validation_Service')) {
+            return false;
+        }
+
+        try {
+            $validation_service = new Automattic\Jetpack\Account_Protection\Validation_Service();
+            return (bool) $validation_service->is_leaked_password((string) $password);
+        } catch (Throwable $e) {
+            return false;
         }
     }
 
@@ -530,9 +568,16 @@ class FlutterUserController extends FlutterBaseController
             }
         }
 
-        // WP core: user_pass is optional, auto-generate if not provided
+        // WP core: user_pass is optional, auto-generate if not provided.
+        // Jetpack: reject passwords found in public data breaches when supplied by the client.
         if (empty($user_pass)) {
             $user_pass = wp_generate_password();
+        } elseif ($this->is_jetpack_password_compromised($user_pass)) {
+            return parent::sendError(
+                'compromised_password',
+                'This password has been found in a public data breach. Please choose a stronger, unique password.',
+                400
+            );
         }
 
         // Normalize params for the allowed_params loop
@@ -572,7 +617,7 @@ class FlutterUserController extends FlutterBaseController
         $default_role = class_exists('WooCommerce') ? 'customer' : get_option('default_role');
 
         // Define safe roles that can be set during self-registration (non-elevated roles)
-        $safe_registration_roles = array('seller', 'wcfm_vendor', 'wcfm_delivery_boy', 'driver', 'owner', 'customer');
+        $safe_registration_roles = array('seller', 'wcfm_vendor', 'wcfm_delivery_boy', 'driver', 'owner', 'customer', 'subscriber');
 
         $requested_role = '';
         if (array_key_exists('role', $params)) {
@@ -622,6 +667,20 @@ class FlutterUserController extends FlutterBaseController
         wp_new_user_notification($user_id, null, 'both');
 
         if (isset($wcfm_membership_application_status) && $wcfm_membership_application_status == 'pending') {
+            // Check if WCFM is configured for auto-approval
+            $auto_approve = false;
+            if (is_plugin_active('wc-multivendor-marketplace/wc-multivendor-marketplace.php') && class_exists('WCFMmp')) {
+                $wcfm_membership_options = get_option('wcfm_membership_options', array());
+                $membership_reject_rules = isset($wcfm_membership_options['membership_reject_rules']) ?
+                                           $wcfm_membership_options['membership_reject_rules'] : array();
+                $required_approval = isset($membership_reject_rules['required_approval']) ?
+                                     $membership_reject_rules['required_approval'] : 'no';
+
+                // 'no' = no approval needed = auto-approve TRUE
+                $auto_approve = ($required_approval === 'no');
+            }
+
+            // Set vendor meta data
             update_user_meta($user_id, 'store_name', $user['display_name']);
 
             //fix crash when approve membership in WCFM
@@ -631,9 +690,18 @@ class FlutterUserController extends FlutterBaseController
             update_user_meta($user_id, 'wcfmvm_static_infos', $wcfmvm_static_infos);
             update_user_meta($user_id, 'billing_phone', $wcfm_phone);
 
-            update_user_meta($user_id, 'temp_wcfm_membership', true);
-            global $WCFMvm;
-            $WCFMvm->send_approval_reminder_admin($user_id);
+            if ($auto_approve && get_role('wcfm_vendor')) {
+                // Auto-approve: upgrade to wcfm_vendor role
+                $wp_user = new WP_User($user_id);
+                $wp_user->set_role('wcfm_vendor');
+            } else {
+                // Manual approval: keep as subscriber and send email to admin
+                update_user_meta($user_id, 'temp_wcfm_membership', true);
+                global $WCFMvm;
+                if (is_object($WCFMvm) && method_exists($WCFMvm, 'send_approval_reminder_admin')) {
+                    $WCFMvm->send_approval_reminder_admin($user_id);
+                }
+            }
         }
 
         if (isset($params['dokan_enable_selling'])) {
@@ -716,13 +784,16 @@ class FlutterUserController extends FlutterBaseController
         }
         $is_driver_available = false;
 
-        if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('local-delivery-drivers-for-woocommerce-premium/local-delivery-drivers-for-woocommerce.php')) {
-            $is_driver_available = get_user_meta($user->ID, 'lddfw_driver_availability', true);
-        } else if (
-            is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') ||
-            is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')
-        ) {
-            $is_driver_available = get_user_meta($user->ID, 'ddwc_driver_availability', true);
+        if (mstore_is_lddfw_active()) {
+            $is_driver_available = filter_var(
+                get_user_meta($user->ID, 'lddfw_driver_availability', true),
+                FILTER_VALIDATE_BOOLEAN
+            );
+        } else if (mstore_is_ddwc_active()) {
+            $is_driver_available = filter_var(
+                get_user_meta($user->ID, 'ddwc_driver_availability', true),
+                FILTER_VALIDATE_BOOLEAN
+            );
         } else {
             $is_driver_available = in_array('administrator', $user->roles) || in_array('wcfm_delivery_boy', $user->roles);
         }
@@ -745,20 +816,26 @@ class FlutterUserController extends FlutterBaseController
             $vendor_auto_approve_selling = isset($dokan_settings['new_seller_enable_selling']) ?
                 ($dokan_settings['new_seller_enable_selling'] === 'automatically') : false;
         }
-
-        // Check for WCFM
-        if (is_plugin_active('wc-frontend-manager/wc_frontend_manager.php') && class_exists('WCFMmp')) {
+        // Check for WCFM Core (only if Dokan is not active)
+        elseif (is_plugin_active('wc-frontend-manager/wc_frontend_manager.php') && class_exists('WCFM')) {
             global $WCFM;
 
             // Order Status Change capability
             $order_status_change = $WCFM->wcfm_vendor_support->wcfm_vendor_has_capability($user->ID, 'order_status_update');
 
-            // Required Approval option (inverted logic)
-            $wcfm_options = $WCFM->wcfm_options;
+            // Check for WCFM Marketplace (vendor auto-approval setting)
+            if (is_plugin_active('wc-multivendor-marketplace/wc-multivendor-marketplace.php') && class_exists('WCFMmp')) {
+                // Required Approval setting from WCFM Marketplace
+                $wcfm_membership_options = get_option('wcfm_membership_options', array());
+                $membership_reject_rules = isset($wcfm_membership_options['membership_reject_rules']) ?
+                                           $wcfm_membership_options['membership_reject_rules'] : array();
+                $required_approval = isset($membership_reject_rules['required_approval']) ?
+                                     $membership_reject_rules['required_approval'] : 'no';
 
-            // WCFM uses 'required_approval' - if yes, auto approval is disabled
-            $required_approval = isset($wcfm_options['required_approval']) ? $wcfm_options['required_approval'] : 'no';
-            $vendor_auto_approve_selling = ($required_approval === 'no');
+                // 'yes' = requires approval = auto-approve FALSE
+                // 'no' = no approval needed = auto-approve TRUE
+                $vendor_auto_approve_selling = ($required_approval === 'no');
+            }
         }
 
         // If user is admin, always allow order status change
@@ -799,17 +876,44 @@ class FlutterUserController extends FlutterBaseController
         }
         $username = $params["username"];
         $password = $params["password"];
-
+        if (!is_string($username) || !is_string($password)) {
+            return parent::sendError("invalid_login", "Invalid request format.", 400);
+        }
 
         if (isset($params["seconds"])) {
             $seconds = (int)$params["seconds"];
         } else {
             $seconds = 1209600;
         }
+
+        if ($this->is_jetpack_account_protection_enabled()) {
+            $candidate_user = is_email($username)
+                ? get_user_by('email', $username)
+                : get_user_by('login', $username);
+
+            if ($candidate_user instanceof WP_User && wp_check_password($password, $candidate_user->user_pass, $candidate_user->ID)) {
+                if ($this->is_jetpack_password_compromised($password)) {
+                    return parent::sendError(
+                        'compromised_password',
+                        'Your password has been found in a public data breach. Please reset your password via email before logging in.',
+                        401
+                    );
+                }
+            }
+        }
+
         $_POST['action'] = 'listeoajaxlogin'; //fix to return json if login error in listeo
         $user = wp_authenticate($username, $password);
 
         if (is_wp_error($user)) {
+            $error_code = $user->get_error_code();
+            if ($error_code === 'compromised_password') {
+                return parent::sendError(
+                    'compromised_password',
+                    'Your password has been found in a public data breach. Please reset your password via email before logging in.',
+                    401
+                );
+            }
             return parent::sendError($user->get_error_code(), "Invalid username/email and/or password.", 401);
         }
 
@@ -959,17 +1063,63 @@ class FlutterUserController extends FlutterBaseController
         return $result;
     }
 
+    /**
+     * Phone number spellings an existing account may have been created under.
+     *
+     * Before signature verification was added, the token payload was run through
+     * urldecode(), which turns the '+' of an E.164 number into a space that trim()
+     * then removed - so accounts created by older builds are keyed on the digits
+     * alone. Proper base64url decoding keeps the '+', so both spellings have to be
+     * considered when locating an existing account, or returning users silently
+     * get a brand new one.
+     *
+     * @param string $phone
+     * @return string[] Most canonical first.
+     */
+    private function firebase_phone_candidates($phone)
+    {
+        $candidates = array($phone);
+
+        $stripped = ltrim($phone, '+');
+        if ($stripped !== '' && $stripped !== $phone) {
+            $candidates[] = $stripped;
+        }
+
+        return $candidates;
+    }
+
+    private function firebase_login_domain()
+    {
+        $domain = $_SERVER['SERVER_NAME'] == 'default_server' ? $_SERVER['HTTP_HOST'] : $_SERVER['SERVER_NAME'];
+        if (count(explode(".", $domain)) == 1) {
+            $domain = "flutter.io";
+        }
+        return $domain;
+    }
+
     private function firebase_sms_login($phone)
     {
         if (!isset($phone)) {
             return parent::sendError("invalid_login", "You must include a 'phone' variable.", 400);
         }
-        $domain = $_SERVER['SERVER_NAME'] == 'default_server' ? $_SERVER['HTTP_HOST'] : $_SERVER['SERVER_NAME'];
-        if (count(explode(".", $domain)) == 1) {
-            $domain = "flutter.io";
-        }
+        $domain = $this->firebase_login_domain();
+
         $user_name = $phone;
         $user_email = $phone . "@" . $domain;
+
+        // Reuse the account an older build created for this number rather than
+        // creating a duplicate under the new spelling.
+        if (!email_exists($user_email)) {
+            foreach ($this->firebase_phone_candidates($phone) as $candidate) {
+                $legacy_email = $candidate . "@" . $domain;
+                if (email_exists($legacy_email)) {
+                    $user_email = $legacy_email;
+                    $user_name  = $candidate;
+                    break;
+                }
+            }
+        }
+
         return $this->createSocialAccount($user_email, $user_name, $user_name, "");
     }
 
@@ -979,15 +1129,30 @@ class FlutterUserController extends FlutterBaseController
             return parent::sendError("invalid_login", "You must include a 'phone' variable.", 400);
         }
 
-        $args = array('meta_key' => 'registered_phone_number', 'meta_value' => $phone);
-        $search_users = get_users($args);
-        if (empty($search_users)) {
-            $domain = $_SERVER['SERVER_NAME'] == 'default_server' ? $_SERVER['HTTP_HOST'] : $_SERVER['SERVER_NAME'];
-            if (count(explode(".", $domain)) == 1) {
-                $domain = "flutter.io";
+        // registered_phone_number is stored in whichever spelling the app sent at
+        // registration time, so try the canonical form before the legacy one.
+        $search_users = array();
+        foreach ($this->firebase_phone_candidates($phone) as $candidate) {
+            $search_users = get_users(array(
+                'meta_key'   => 'registered_phone_number',
+                'meta_value' => $candidate,
+            ));
+            if (!empty($search_users)) {
+                break;
             }
-            $user_email = $phone . "@" . $domain;
-            $user = get_user_by('email', $user_email);
+        }
+
+        if (empty($search_users)) {
+            $domain = $this->firebase_login_domain();
+
+            $user = false;
+            foreach ($this->firebase_phone_candidates($phone) as $candidate) {
+                $user = get_user_by('email', $candidate . "@" . $domain);
+                if ($user) {
+                    break;
+                }
+            }
+
             if (!$user) {
                 return parent::sendError("invalid_login", "User does not exist", 400);
             }
@@ -1126,7 +1291,7 @@ class FlutterUserController extends FlutterBaseController
     {
         $cookie = $request["cookie"];
         if (isset($request["token"])) {
-            $cookie = urldecode(base64_decode($request["token"]));
+            $cookie = mstore_decode_user_cookie($request["token"]);
         }
         $user_id = validateCookieLogin($cookie);
         if (is_wp_error($user_id)) {
@@ -1410,7 +1575,7 @@ class FlutterUserController extends FlutterBaseController
         $params = json_decode($json, TRUE);
         $token = $params['token'];
         if (isset($token)) {
-            $cookie = urldecode(base64_decode($token));
+            $cookie = mstore_decode_user_cookie($token);
         } else {
             return parent::sendError("unauthorized", "You are not allowed to do this", 401);
         }

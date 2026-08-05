@@ -80,7 +80,7 @@ class FlutterFiboSearch extends FlutterBaseController
                     'limit_chars' => (int)$settings->getOption('suggestions_limit', 10),
                     'search_no_results_text' => $settings->getOption('search_no_results_text', 'No results'),
                     'show_product_image' => $settings->getOption('show_product_image') === 'on',
-                    'show_product_price' => $settings->getOption(option_key: 'show_product_price') === 'on',
+                    'show_product_price' => $settings->getOption('show_product_price') === 'on',
                     'show_product_desc' => $settings->getOption('show_product_desc') === 'on',
                     'show_product_sku' => $settings->getOption('show_product_sku') === 'on',
                     'search_see_all_results_text' => $settings->getOption('search_see_all_results_text', 'See all products...'),
@@ -90,7 +90,7 @@ class FlutterFiboSearch extends FlutterBaseController
                     'search_in_product_description' => $settings->getOption('search_in_product_content') === 'on',
                     'search_in_product_short_description' => $settings->getOption('search_in_product_excerpt') === 'on',
                     'search_in_product_sku' => $settings->getOption('search_in_product_sku') === 'on',
-                    'exclude_out_of_stock_products' => $settings->getOption(option_key: 'exclude_out_of_stock') === 'on',
+                    'exclude_out_of_stock_products' => $settings->getOption('exclude_out_of_stock') === 'on',
                 ),
             );
         } catch (Exception $e) {

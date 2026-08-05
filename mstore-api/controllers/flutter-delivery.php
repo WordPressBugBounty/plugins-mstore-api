@@ -241,7 +241,7 @@ class FlutterDelivery extends FlutterBaseController
         if ($request['platform'] == 'woo' ||$request['platform'] == 'dokan') {
             $helper = new DeliveryWooHelper();
         }
-        return $helper->update_delivery_order($request['order_id']);
+        return $helper->update_delivery_order($request['order_id'], $user_id);
     }
 
     public function get_delivery_profile($request)
@@ -275,17 +275,57 @@ class FlutterDelivery extends FlutterBaseController
     {
         $token = sanitize_text_field($token);
         if (isset($token)) {
-            $cookie = urldecode(base64_decode($token));
+            $cookie = mstore_decode_user_cookie($token);
         } else {
             return parent::sendError("unauthorized", "You are not allowed to do this", 401);
         }
-        
+
         $user_id = validateCookieLogin($cookie);
         if (is_wp_error($user_id)) {
             return $user_id;
         }
 
-        return apply_filters("authorize_user", $user_id, $token);
+        $authorized_user_id = apply_filters("authorize_user", $user_id, $token);
+        if (is_wp_error($authorized_user_id)) {
+            return $authorized_user_id;
+        }
+
+        $authorized_user_id = absint($authorized_user_id);
+
+        // A valid cookie only proves the caller is *some* registered user. Without
+        // this, any subscriber could drive the delivery routes - including
+        // update_delivery_order(), which completes an order.
+        if (empty($authorized_user_id) || !$this->user_can_access_delivery($authorized_user_id)) {
+            return parent::sendError("forbidden", "You are not allowed to access delivery resources.", 403);
+        }
+
+        return $authorized_user_id;
+    }
+
+    /**
+     * Whether $user_id is a delivery account (or a store manager acting as one).
+     */
+    protected function user_can_access_delivery($user_id)
+    {
+        $user = get_userdata($user_id);
+        if (!$user || empty($user->roles)) {
+            return false;
+        }
+
+        if (user_can($user_id, 'manage_woocommerce')) {
+            return true;
+        }
+
+        $allowed_roles = apply_filters('mstore_allowed_delivery_roles', array(
+            'administrator',
+            'shop_manager',
+            'driver',
+            'delivery_boy',
+            'wcfm_delivery_boy',
+            'lddfw_driver',
+        ));
+
+        return (bool) array_intersect((array) $user->roles, $allowed_roles);
     }
 
 }

@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.20.0
+ * Version: 4.21.1
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  *
@@ -24,6 +24,12 @@ include plugin_dir_path(__FILE__) . "templates/class-rename-generate.php";
 // ---------------------------------------------------------------------------
 include_once plugin_dir_path(__FILE__) . "functions/index.php";
 include_once plugin_dir_path(__FILE__) . "functions/utils.php";
+// Guarded: when a release is packaged without this file the bare include_once
+// emits warnings that get prepended to every REST response and break the JSON.
+// The two callers below fall back gracefully when the class is absent.
+if (file_exists(plugin_dir_path(__FILE__) . "controllers/helpers/icon-helper.php")) {
+    include_once plugin_dir_path(__FILE__) . "controllers/helpers/icon-helper.php";
+}
 include_once plugin_dir_path(__FILE__) . "controllers/listing-rest-api/class.api.fields.php";
 include_once plugin_dir_path(__FILE__) . "controllers/helpers/firebase-message-helper.php";
 include_once plugin_dir_path(__FILE__) . "controllers/helpers/firebase-phone-auth-helper.php";
@@ -90,7 +96,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.20.0';
+    public $version = '4.21.1';
 
     public function __construct()
     {
@@ -238,11 +244,28 @@ class MstoreCheckOut
         add_action('wp_ajax_mstore_update_new_order_message', array($this, 'mstore_update_new_order_message'));
         add_action('wp_ajax_mstore_update_status_order_title', array($this, 'mstore_update_status_order_title'));
         add_action('wp_ajax_mstore_update_status_order_message', array($this, 'mstore_update_status_order_message'));
+        add_action('wp_ajax_mstore_update_delivery_order_title', array($this, 'mstore_update_delivery_order_title'));
+        add_action('wp_ajax_mstore_update_delivery_order_message', array($this, 'mstore_update_delivery_order_message'));
+        add_action('wp_ajax_mstore_update_delivery_order_unassign_message', array($this, 'mstore_update_delivery_order_unassign_message'));
+
+        // Booking notification settings (Listeo)
+        add_action('wp_ajax_mstore_update_new_booking_title', array($this, 'mstore_update_new_booking_title'));
+        add_action('wp_ajax_mstore_update_new_booking_message', array($this, 'mstore_update_new_booking_message'));
+        add_action('wp_ajax_mstore_update_status_booking_title', array($this, 'mstore_update_status_booking_title'));
+        add_action('wp_ajax_mstore_update_status_booking_message', array($this, 'mstore_update_status_booking_message'));
 
         // listen changed order status to notify
         add_action('woocommerce_order_status_changed', array($this, 'track_order_status_changed'), 9, 4);
         add_action('woocommerce_checkout_update_order_meta', array($this, 'track_new_order'));
         add_action('woocommerce_rest_insert_shop_order_object', array($this, 'track_api_new_order'), 10, 4);
+
+        // Listeo booking notifications
+        add_action('listeo_booking_created', array($this, 'track_new_booking'), 10, 1);
+        add_action('listeo_mail_to_owner_new_reservation', array($this, 'track_new_booking_from_listeo_mail'), 10, 1);
+        add_action('listeo_mail_to_owner_new_instant_reservation', array($this, 'track_new_booking_from_listeo_mail'), 10, 1);
+        add_action('listeo_mail_to_user_pay', array($this, 'track_booking_status_pay_to_confirm_from_listeo_mail'), 10, 1);
+        add_action('listeo_mail_to_user_paid', array($this, 'track_booking_status_paid_from_listeo_mail'), 10, 1);
+        add_action('listeo_mail_to_user_canceled', array($this, 'track_booking_status_cancelled_from_listeo_mail'), 10, 1);
 
         //WCFM - WooCommerce Frontend Manager - Delivery
         //Handle listen to assign delivery boy on the website
@@ -382,6 +405,241 @@ class MstoreCheckOut
         }else{
             wp_send_json_error('No Permission',401);
         }
+    }
+
+     function mstore_update_delivery_order_title()
+    {
+        $nonce = sanitize_text_field($_REQUEST['nonce']);
+        if(checkIsAdmin(get_current_user_id()) && wp_verify_nonce($nonce, 'update_delivery_order_title')){
+            $title = sanitize_text_field($_REQUEST['title']);
+            update_option("mstore_delivery_order_title", $title);
+            wp_send_json('success',200);
+        }else{
+            wp_send_json_error('No Permission',401);
+        }
+    }
+
+    // Booking notification settings
+    function mstore_update_new_booking_title()
+    {
+        $nonce = sanitize_text_field($_REQUEST['nonce']);
+        if(checkIsAdmin(get_current_user_id()) && wp_verify_nonce($nonce, 'update_new_booking_title')){
+            $title = sanitize_text_field($_REQUEST['title']);
+            update_option("mstore_new_booking_title", $title);
+        }else{
+            wp_send_json_error('No Permission',401);
+        }
+    }
+
+    function mstore_update_delivery_order_message()
+    {
+        $nonce = sanitize_text_field($_REQUEST['nonce']);
+        if(checkIsAdmin(get_current_user_id()) && wp_verify_nonce($nonce, 'update_delivery_order_message')){
+            $message = sanitize_textarea_field($_REQUEST['message']);
+            update_option("mstore_delivery_order_message", $message);
+        }else{
+            wp_send_json_error('No Permission',401);
+        }
+    }
+
+    function mstore_update_new_booking_message()
+    {
+        $nonce = sanitize_text_field($_REQUEST['nonce']);
+        if(checkIsAdmin(get_current_user_id()) && wp_verify_nonce($nonce, 'update_new_booking_message')){
+            $message = sanitize_text_field($_REQUEST['message']);
+            update_option("mstore_new_booking_message", $message);
+        }else{
+            wp_send_json_error('No Permission',401);
+        }
+    }
+
+    function mstore_update_delivery_order_unassign_message()
+    {
+        $nonce = sanitize_text_field($_REQUEST['nonce']);
+        if(checkIsAdmin(get_current_user_id()) && wp_verify_nonce($nonce, 'update_delivery_order_unassign_message')){
+            $message = sanitize_textarea_field($_REQUEST['message']);
+            update_option("mstore_delivery_order_unassign_message", $message);
+        }else{
+            wp_send_json_error('No Permission',401);
+        }
+    }
+
+    function mstore_update_status_booking_title()
+    {
+        $nonce = sanitize_text_field($_REQUEST['nonce']);
+        if(checkIsAdmin(get_current_user_id()) && wp_verify_nonce($nonce, 'update_status_booking_title')){
+            $title = sanitize_text_field($_REQUEST['title']);
+            update_option("mstore_status_booking_title", $title);
+        }else{
+            wp_send_json_error('No Permission',401);
+        }
+    }
+
+    function mstore_update_status_booking_message()
+    {
+        $nonce = sanitize_text_field($_REQUEST['nonce']);
+        if(checkIsAdmin(get_current_user_id()) && wp_verify_nonce($nonce, 'update_status_booking_message')){
+            $message = sanitize_text_field($_REQUEST['message']);
+            update_option("mstore_status_booking_message", $message);
+        }else{
+            wp_send_json_error('No Permission',401);
+        }
+    }
+
+    // Booking tracking functions
+    function track_new_booking($booking_id)
+    {
+        $this->track_new_booking_once($booking_id);
+    }
+
+    function track_new_booking_from_listeo_mail($mail_args)
+    {
+        if (!is_array($mail_args) || !isset($mail_args['booking'])) {
+            return;
+        }
+
+        $booking = $mail_args['booking'];
+        $booking_id = $this->extract_booking_id_from_payload($booking);
+
+        if ($booking_id <= 0) {
+            $booking_id = $this->resolve_booking_id_from_payload($booking);
+        }
+
+        $this->track_new_booking_once($booking_id);
+    }
+
+    private function extract_booking_id_from_payload($booking)
+    {
+        $payload = is_object($booking) ? (array) $booking : $booking;
+        if (!is_array($payload)) {
+            return 0;
+        }
+
+        if (isset($payload['id'])) {
+            return absint($payload['id']);
+        }
+
+        if (isset($payload['ID'])) {
+            return absint($payload['ID']);
+        }
+
+        if (isset($payload['booking_id'])) {
+            return absint($payload['booking_id']);
+        }
+
+        return 0;
+    }
+
+    private function resolve_booking_id_from_payload($booking)
+    {
+        $payload = is_object($booking) ? (array) $booking : $booking;
+        if (!is_array($payload)) {
+            return 0;
+        }
+
+        $owner_id = isset($payload['owner_id']) ? absint($payload['owner_id']) : 0;
+        $listing_id = isset($payload['listing_id']) ? absint($payload['listing_id']) : 0;
+        if ($owner_id <= 0 || $listing_id <= 0) {
+            return 0;
+        }
+
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'bookings_calendar';
+
+        $date_start = isset($payload['date_start']) ? sanitize_text_field($payload['date_start']) : '';
+        $date_end = isset($payload['date_end']) ? sanitize_text_field($payload['date_end']) : '';
+        $created = isset($payload['created']) ? sanitize_text_field($payload['created']) : '';
+
+        $booking_id = 0;
+
+        if ($date_start !== '' && $date_end !== '') {
+            $booking_id = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$table_name} WHERE owner_id = %d AND listing_id = %d AND date_start = %s AND date_end = %s ORDER BY id DESC LIMIT 1",
+                $owner_id,
+                $listing_id,
+                $date_start,
+                $date_end
+            ));
+        }
+
+        if ($booking_id <= 0 && $created !== '') {
+            $booking_id = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$table_name} WHERE owner_id = %d AND listing_id = %d AND created = %s ORDER BY id DESC LIMIT 1",
+                $owner_id,
+                $listing_id,
+                $created
+            ));
+        }
+
+        if ($booking_id <= 0) {
+            $booking_id = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$table_name} WHERE owner_id = %d AND listing_id = %d ORDER BY id DESC LIMIT 1",
+                $owner_id,
+                $listing_id
+            ));
+        }
+
+        return $booking_id;
+    }
+
+    private function track_new_booking_once($booking_id)
+    {
+        $booking_id = absint($booking_id);
+        if ($booking_id <= 0) {
+            return;
+        }
+
+        // Avoid duplicate push when multiple Listeo hooks fire for the same booking.
+        $transient_key = 'mstore_booking_push_sent_' . $booking_id;
+        if (get_transient($transient_key)) {
+            return;
+        }
+
+        set_transient($transient_key, 1, 10 * MINUTE_IN_SECONDS);
+        sendNewBookingNotificationToOwner($booking_id);
+    }
+
+    function track_booking_status_pay_to_confirm_from_listeo_mail($mail_args)
+    {
+        $this->track_booking_status_from_listeo_mail($mail_args, 'pay_to_confirm');
+    }
+
+    function track_booking_status_paid_from_listeo_mail($mail_args)
+    {
+        $this->track_booking_status_from_listeo_mail($mail_args, 'paid');
+    }
+
+    function track_booking_status_cancelled_from_listeo_mail($mail_args)
+    {
+        $this->track_booking_status_from_listeo_mail($mail_args, 'cancelled');
+    }
+
+    private function track_booking_status_from_listeo_mail($mail_args, $status)
+    {
+        if (!is_array($mail_args) || !isset($mail_args['booking'])) {
+            return;
+        }
+
+        $booking = $mail_args['booking'];
+        $booking_id = $this->extract_booking_id_from_payload($booking);
+
+        if ($booking_id <= 0) {
+            $booking_id = $this->resolve_booking_id_from_payload($booking);
+        }
+
+        if ($booking_id <= 0 || empty($status)) {
+            return;
+        }
+
+        // Avoid duplicate push when multiple Listeo hooks fire for the same status.
+        $status_key = sanitize_key($status);
+        $transient_key = 'mstore_booking_status_push_last_' . $booking_id;
+        if (get_transient($transient_key) === $status_key) {
+            return;
+        }
+
+        set_transient($transient_key, $status_key, 10 * MINUTE_IN_SECONDS);
+        trackBookingStatusChanged($booking_id, $status);
     }
 
     // update order via website
@@ -1072,7 +1330,7 @@ function flutter_prepare_checkout()
 {
     // Early exit: Only process if checkout parameters are present
     $has_checkout_params = isset($_GET['mobile']) || isset($_GET['code']) || isset($_GET['cookie']);
-    
+
     // Only parse referer as fallback if $_GET is truly empty (preserves legitimate query args)
     if (!$has_checkout_params && empty($_GET) && isset($_SERVER['HTTP_REFERER'])) {
         $url_components = parse_url($_SERVER['HTTP_REFERER']);
@@ -1087,7 +1345,7 @@ function flutter_prepare_checkout()
             $has_checkout_params = isset($_GET['mobile']) || isset($_GET['code']) || isset($_GET['cookie']);
         }
     }
-    
+
     // Exit early if no checkout-related parameters found - prevents database thrashing on regular page loads
     if (!$has_checkout_params) {
         return;
@@ -1134,10 +1392,10 @@ function flutter_prepare_checkout()
                     // Batch retrieve user meta instead of 22 individual queries
                     $user_meta = get_user_meta($userId);
                     $billing_fields = array('first_name', 'last_name', 'company', 'address_1', 'address_2', 'city', 'state', 'postcode', 'country', 'email', 'phone');
-                    
+
                     $billing = array();
                     $shipping = array();
-                    
+
                     foreach ($billing_fields as $field) {
                         $billing[$field] = isset($user_meta['billing_' . $field][0]) ? $user_meta['billing_' . $field][0] : '';
                         $shipping[$field] = isset($user_meta['shipping_' . $field][0]) ? $user_meta['shipping_' . $field][0] : '';
@@ -1264,7 +1522,7 @@ function flutter_prepare_checkout()
     }
 
     if (isset($_GET['cookie'])) {
-        $cookie = urldecode(base64_decode(sanitize_text_field($_GET['cookie'])));
+        $cookie = mstore_decode_user_cookie(sanitize_text_field($_GET['cookie']));
         $userId = validateCookieLogin($cookie);
         if (!is_wp_error($userId)) {
             $user = get_userdata($userId);

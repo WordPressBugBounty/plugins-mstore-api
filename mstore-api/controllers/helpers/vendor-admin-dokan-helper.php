@@ -470,7 +470,7 @@ class VendorAdminDokanHelper
         $week_2_orders = dokan()->order->all($this->add_date_filter($args, 'week_2'));
         $week_3_orders = dokan()->order->all($this->add_date_filter($args, 'week_3'));
         $week_4_orders = dokan()->order->all($this->add_date_filter($args, 'week_4'));
-        $week_5_orders = dokan()->order->all($this->add_date_filter($args, 'month'));
+        $week_5_orders = dokan()->order->all($this->add_date_filter($args, 'week_5'));
         $all_orders = dokan()->order->all($args);
 
         $sales_stats['gross_sales']['last_month'] = $this->get_gross_sales_orders($last_month_orders);
@@ -482,14 +482,7 @@ class VendorAdminDokanHelper
         $sales_stats['gross_sales']['week_4'] = $this->get_gross_sales_orders($week_4_orders);
         $sales_stats['gross_sales']['week_5'] = $this->get_gross_sales_orders($week_5_orders);
         $sales_stats['gross_sales']['all'] = $this->get_gross_sales_orders($all_orders);
-        if ($sales_stats['gross_sales']['last_month'] != 0) {
-            $profit_percentage = round($sales_stats['gross_sales']['month'] - $sales_stats['gross_sales']['last_month'], 2);
-            $profit_percentage = round($profit_percentage / $sales_stats['gross_sales']['last_month'] * 100 / 100, 2);
-        } else {
-            $profit_percentage = round($sales_stats['gross_sales']['month'] - $sales_stats['gross_sales']['last_month'], 2);
-            $profit_percentage = round($profit_percentage / 1 * 100 / 100, 2);
-        }
-        $sales_stats['gross_sales']['profit_percentage'] = $profit_percentage;
+        $sales_stats['gross_sales']['profit_percentage'] = mstore_calculate_percentage_change($sales_stats['gross_sales']['month'], $sales_stats['gross_sales']['last_month']);
         $sales_stats['earnings']['last_month'] = $this->get_gross_earnings_orders($last_month_orders);
         $sales_stats['earnings']['month'] = $this->get_gross_earnings_orders($month_orders);
         $sales_stats['earnings']['year'] = $this->get_gross_earnings_orders($year_orders);
@@ -499,14 +492,7 @@ class VendorAdminDokanHelper
         $sales_stats['earnings']['week_4'] = $this->get_gross_earnings_orders($week_4_orders);
         $sales_stats['earnings']['week_5'] = $this->get_gross_earnings_orders($week_5_orders);
         $sales_stats['earnings']['all'] = $this->get_gross_earnings_orders($all_orders);
-        if ($sales_stats['earnings']['last_month'] != 0) {
-            $profit_percentage = round($sales_stats['earnings']['month'] - $sales_stats['earnings']['last_month'], 2);
-            $profit_percentage = round($profit_percentage / $sales_stats['earnings']['last_month'] * 100 / 100, 2);
-        } else {
-            $profit_percentage = round($sales_stats['earnings']['month'] - $sales_stats['earnings']['last_month'], 2);
-            $profit_percentage = round($profit_percentage / 1 * 100 / 100, 2);
-        }
-        $sales_stats['earnings']['profit_percentage'] = $profit_percentage;
+        $sales_stats['earnings']['profit_percentage'] = mstore_calculate_percentage_change($sales_stats['earnings']['month'], $sales_stats['earnings']['last_month']);
 
         $sales_stats['currency'] = get_woocommerce_currency();
 

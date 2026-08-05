@@ -1,6 +1,8 @@
 {
   "name": "inspireui/mstore-api",
+  "description": "WordPress REST API bridge for FluxBuilder and FluxStore mobile apps",
   "type": "wordpress-plugin",
+  "license": "GPL-2.0-only",
   "authors": [
     {
       "name": "FluxBuilder",
@@ -11,6 +13,13 @@
     "firebase/php-jwt": "^6.8",
     "paragonie/sodium_compat": "^1.20",
     "google/auth": "^1.37"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^9.6"
+  },
+  "scripts": {
+    "lint": "find . -path './vendor' -prune -o -name '*.php' -print0 | xargs -0 -n1 php -l",
+    "test": "phpunit --configuration phpunit.xml.dist"
   },
   "config": {
     "platform": {

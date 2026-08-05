@@ -1,56 +1,101 @@
 <?php
+use Firebase\JWT\JWT;
+use Firebase\JWT\Key;
 
 class FirebasePhoneAuthHelper
 {
-    public function verify_id_token($id_token){
-        $splitToken = explode(".", $id_token);
-        $headerBase64 = $splitToken[0]; // Header is always the index 0
-        $decodedHeader = json_decode(urldecode(base64_decode($headerBase64)), true);
+    const FIREBASE_PUBLIC_KEYS_URL = 'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
 
-        if (!isset($decodedHeader['alg']) || $decodedHeader['alg'] != 'RS256') {
-            return false;
+    public function verify_id_token($id_token)
+    {
+        try {
+            // Fetch public keys
+            $public_keys = $this->get_public_keys();
+            if (!$public_keys) {
+                return new WP_Error('firebase_auth_error', 'Could not retrieve public keys for verification.', array('status' => 500));
+            }
+
+            // The firebase/php-jwt v6+ library requires Key objects.
+            $key_objects = [];
+            foreach ($public_keys as $kid => $key) {
+                $key_objects[$kid] = new Key($key, 'RS256');
+            }
+
+            // Decode and verify signature (JWT::decode automatically checks 'exp' and 'nbf')
+            $decoded_token = JWT::decode($id_token, $key_objects);
+
+            // Fetch actual project ID from config (Blocker: Prevents cross-project token attacks)
+            if (!FirebaseMessageHelper::is_file_existed()) {
+                return new WP_Error('firebase_auth_error', 'Firebase private key file is not found', array('status' => 500));
+            }
+            $json = json_decode(file_get_contents(
+                FirebaseMessageHelper::get_config_file_path(FirebaseMessageHelper::get_file_name())
+            ), true);
+            $actual_project_id = $json['project_id'];
+
+            // Verify Claims securely against our actual project configuration
+            if ($decoded_token->aud !== $actual_project_id) {
+                return new WP_Error('firebase_auth_error', 'Invalid token audience.', array('status' => 401));
+            }
+
+            if ($decoded_token->iss !== 'https://securetoken.google.com/' . $actual_project_id) {
+                return new WP_Error('firebase_auth_error', 'Invalid token issuer.', array('status' => 401));
+            }
+
+            // Verify mandatory claims per Google Spec
+            if (empty($decoded_token->sub)) {
+                return new WP_Error('firebase_auth_error', 'Token subject (sub) is missing.', array('status' => 401));
+            }
+
+            if (!isset($decoded_token->auth_time) || $decoded_token->auth_time > time()) {
+                return new WP_Error('firebase_auth_error', 'Invalid auth_time.', array('status' => 401));
+            }
+
+            if ($decoded_token->iat > (time() + 5)) { // 5 seconds leeway for clock skew
+                return new WP_Error('firebase_auth_error', 'Token issued in the future.', array('status' => 401));
+            }
+
+            if (empty($decoded_token->phone_number)) {
+                 return new WP_Error('firebase_auth_error', 'Phone number not found in token.', array('status' => 401));
+            }
+
+            return trim($decoded_token->phone_number);
+
+        } catch (Exception $e) {
+            return new WP_Error('firebase_auth_error', 'Token verification failed: ' . $e->getMessage(), array('status' => 401));
         }
-
-        $public_keys = $this->get_public_keys();
-        if (!isset($decodedHeader['kid']) || !in_array($decodedHeader['kid'], $public_keys)) {
-            return false;
-        }
-
-        $payloadBase64 = $splitToken[1]; // Payload is always the index 1
-        $decodedPayload = json_decode(urldecode(base64_decode($payloadBase64)), true);
-
-        if(!FirebaseMessageHelper::is_file_existed()){
-            return new WP_Error(400, "Firebase private key file is not found", array('status' => 400));
-        }
-        $file_name = FirebaseMessageHelper::get_file_name();
-        $file_path = FirebaseMessageHelper::get_config_file_path($file_name);
-        $fileContent = file_get_contents($file_path);
-        $json = json_decode($fileContent, true);
-        $projectId = $json['project_id'];
-
-        if (!isset($decodedPayload['aud']) || $decodedPayload['aud'] !== $projectId) {
-            return false;
-        }
-        
-        if (!isset($decodedPayload['iss']) || $decodedPayload['iss'] !== 'https://securetoken.google.com/'.$projectId) {
-            return false;
-        }
-
-        return isset($decodedPayload['phone_number']) ? trim($decodedPayload['phone_number']) : false;
     }
 
     private function get_public_keys()
     {
-            $response = wp_remote_get("https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com");
-            $statusCode = wp_remote_retrieve_response_code($response);
-            $result = wp_remote_retrieve_body($response);
-            $result = json_decode($result, true);
-            if($statusCode != 200 && is_array($result) && isset($result['error'])){
-                return new WP_Error(400, $result['error']['message'], array('status' => 400));
+        // Namespaced transient key to prevent conflicts
+        $keys = get_transient('mstore_firebase_public_keys');
+
+        if ($keys === false) {
+            // Set timeout for login hot path
+            $response = wp_remote_get(self::FIREBASE_PUBLIC_KEYS_URL, array('timeout' => 5));
+
+            if (is_wp_error($response) || 200 !== wp_remote_retrieve_response_code($response)) {
+                return false;
             }
-            return array_keys($result);
+
+            $body = wp_remote_retrieve_body($response);
+            $keys = json_decode($body, true);
+
+            // Only cache valid JSON arrays to prevent wedging logins
+            if (is_array($keys) && !empty($keys)) {
+                $headers = wp_remote_retrieve_headers($response);
+                $cache_control = isset($headers['cache-control']) ? $headers['cache-control'] : 'max-age=3600';
+
+                preg_match('/max-age=(\d+)/', $cache_control, $matches);
+                $max_age = isset($matches[1]) ? (int)$matches[1] : 3600;
+
+                set_transient('mstore_firebase_public_keys', $keys, $max_age);
+            } else {
+                return false;
+            }
+        }
+        return $keys;
     }
 }
-
-
 ?>

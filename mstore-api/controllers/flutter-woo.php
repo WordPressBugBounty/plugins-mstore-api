@@ -62,6 +62,16 @@ class FlutterWoo extends FlutterBaseController
             ),
         ));
 
+        register_rest_route($this->namespace, '/ddates/v2', array(
+            array(
+                'methods' => "GET",
+                'callback' => array($this, 'get_ddates_v2'),
+                'permission_callback' => function () {
+                    return parent::checkApiPermission();
+                }
+            ),
+        ));
+
         register_rest_route($this->namespace, '/payment_methods', array(
             array(
                 'methods' => WP_REST_Server::CREATABLE,
@@ -291,9 +301,9 @@ class FlutterWoo extends FlutterBaseController
     {
         global $wpdb;
 
-        $sql = "SELECT post_id 
+        $sql = "SELECT post_id
             FROM {$wpdb->prefix}postmeta
-            WHERE meta_key = '%s' 
+            WHERE meta_key = '%s'
             AND meta_value = '%s'";
 
         return $wpdb->get_var($wpdb->prepare($sql, $meta_key, $meta_value));
@@ -335,7 +345,7 @@ class FlutterWoo extends FlutterBaseController
 
 		if(isset($data) && is_numeric($data)){
 			$type = get_post_type($data);
-			
+
 			if($type){
 				if($type == 'product'){
 					$controller = new CUSTOM_WC_REST_Products_Controller();
@@ -352,7 +362,7 @@ class FlutterWoo extends FlutterBaseController
 
 				if($type == 'shop_order'){
                     if (isset($token)) {
-                        $cookie = urldecode(base64_decode($token));
+                        $cookie = mstore_decode_user_cookie($token);
                     } else {
                         return parent::sendError("unauthorized", "You are not allowed to do this", 401);
                     }
@@ -403,7 +413,7 @@ class FlutterWoo extends FlutterBaseController
                         $line_items[] = $order["line_items"][$i];
                     }
                     $order["line_items"] = $line_items;
-              
+
                 	return array(
 						'type' => $type,
 						'data' => [$order],
@@ -699,7 +709,7 @@ class FlutterWoo extends FlutterBaseController
             }else{
                 return true;
             }
-            
+
         }
     }
 
@@ -739,7 +749,7 @@ class FlutterWoo extends FlutterBaseController
         if(isset($body['coupon_lines']) && is_array($body['coupon_lines']) && count($body['coupon_lines']) > 0){
             WC()->cart->apply_coupon($body['coupon_lines'][0]['code']);
         }
-        
+
         /* set calculation type if product is subscription to get shipping methods for subscription product have trial days */
         if (is_plugin_active('woocommerce-subscriptions/woocommerce-subscriptions.php')) {
             foreach ($body['line_items'] as $product) {
@@ -823,7 +833,7 @@ class FlutterWoo extends FlutterBaseController
 			$_GET['wc-ajax'] = 'update_order_review';
             $_POST['country'] = $shipping["country"];
 		}
-        
+
         $error = $this->add_items_to_cart($body['line_items']);
         if (is_string($error)) {
             return parent::sendError("invalid_item", $error, 400);
@@ -984,7 +994,7 @@ class FlutterWoo extends FlutterBaseController
     {
         $cookie = $request["cookie"];
         if (isset($request["token"])) {
-            $cookie = urldecode(base64_decode($request["token"]));
+            $cookie = mstore_decode_user_cookie($request["token"]);
         }
         $user_id = validateCookieLogin($cookie);
         if (is_wp_error($user_id)) {
@@ -1000,7 +1010,7 @@ class FlutterWoo extends FlutterBaseController
         if($session == false){
 			return [];
 		}
-        
+
         // Get cart items array
         $cart_items = maybe_unserialize($session['cart']);
 
@@ -1014,10 +1024,10 @@ class FlutterWoo extends FlutterBaseController
                 $product_id = $cart_item['product_id'];
                 $variation_id = $cart_item['variation_id'];
                 $quantity = $cart_item['quantity'];
-    
+
                 $product = wc_get_product($product_id);
                 $product_data = $product_controller->prepare_object_for_response($product, $request)->get_data();
-    
+
                 if ($variation_id != 0) {
                     $variation = new WC_Product_Variation($variation_id);
                     $variation_data = $product_variation_controller->prepare_object_for_response($variation, $request)->get_data();
@@ -1085,11 +1095,11 @@ class FlutterWoo extends FlutterBaseController
 		if ($file["size"] == 0) {
 			return parent::sendError("invalid_file","File is required", 400);
 		}
-		
+
 		if ($file["type"] !== "application/json") {
 			return parent::sendError("invalid_file","You need to upload json file", 400);
 		}
-		
+
         $errMsg = FlutterUtils::upload_file_by_admin($file);
 		if ($errMsg != null) {
 			return parent::sendError("invalid_file","You need to upload config_xx.json file", 400);
@@ -1167,7 +1177,7 @@ class FlutterWoo extends FlutterBaseController
             } else {
                 $results[] = ["label" => WC()->countries->tax_or_vat() . $estimated_text, "value" => WC()->cart->get_taxes_total()];
             }
-			
+
 			return ["items" => $results, "taxes_total" => count($results) > 0 ? WC()->cart->get_taxes_total() : "0", "is_including_tax" => WC()->cart->display_prices_including_tax()];
         }else{
 			return ["items" => [], "taxes_total" => "0", "is_including_tax" => false];
@@ -1249,7 +1259,7 @@ class FlutterWoo extends FlutterBaseController
 
         $cookie = $request["cookie"];
         if (isset($request["token"])) {
-            $cookie = urldecode(base64_decode($request["token"]));
+            $cookie = mstore_decode_user_cookie($request["token"]);
         }
         $user_id = validateCookieLogin($cookie);
         if (is_wp_error($user_id)) {
@@ -1271,12 +1281,12 @@ class FlutterWoo extends FlutterBaseController
             }
 
             return [
-                "points" => $myPoints, 
-                "price_rate" => floatval($price_rate), 
-                "points_rate" => intval($points_rate), 
-                "cart_price_rate" => floatval($monetary_value), 
-                "cart_points_rate" => intval($points), 
-                "max_point_discount" => $max_point_discount, 
+                "points" => $myPoints,
+                "price_rate" => floatval($price_rate),
+                "points_rate" => intval($points_rate),
+                "cart_price_rate" => floatval($monetary_value),
+                "cart_points_rate" => intval($points),
+                "max_point_discount" => $max_point_discount,
                 "max_product_point_discount" => $max_product_point_discount];
         } else {
             return parent::sendError("disabled_redemption", "Disabled partial redemption", 400);
@@ -1328,63 +1338,110 @@ class FlutterWoo extends FlutterBaseController
         return true;
     }
 
-    public function create_product_review($request)
+    function create_product_review($request)
     {
-        //Validate review product for order
-        if(isset($request['comment_meta']) && is_array($request['comment_meta']) && $request['comment_meta']['order_id']){
-            $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
-            if (isset($cookie) && $cookie != null) {
-                $user_id = validateCookieLogin($cookie);
-                if (is_wp_error($user_id)) {
-                    return $user_id;
-                }
-                $args = array(
-                    'id' => $request['comment_meta']['order_id'],
-                    'customer_id' => $user_id,
-                );
-                $orders = wc_get_orders( $args );
-                if (count($orders) == 0) {
-                    return parent::sendError("no_permission","You don't have the permissions to review this product", 400);
-                }
-            }else{
-                return parent::sendError("cookie_required","User-Cookie is required", 400);
+        // Require authentication
+        $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
+        if (!isset($cookie) || $cookie == null) {
+            return parent::sendError("cookie_required", "User-Cookie is required", 400);
+        }
+
+        $user_id = validateCookieLogin($cookie);
+        if (is_wp_error($user_id)) {
+            return $user_id;
+        }
+
+        wp_set_current_user($user_id);
+        $user = get_userdata($user_id);
+
+        // Guard against deleted users (PHP 8 warning prevention)
+        if (!$user) {
+            return parent::sendError("invalid_user", "User not found.", 404);
+        }
+
+        $product_id = isset($request['product_id']) ? (int) $request['product_id'] : 0;
+
+        // Prevent Duplicate Reviews (Review Integrity)
+        $existing = get_comments(array(
+            'post_id' => $product_id,
+            'user_id' => $user_id,
+            'type'    => 'review',
+            'count'   => true,
+        ));
+        if ($existing > 0) {
+            return parent::sendError("duplicate_review", "You have already reviewed this product.", 403);
+        }
+
+        // Force override identity to prevent spoofing
+        $request['reviewer']       = $user->display_name;
+        $request['reviewer_email'] = $user->user_email;
+
+        // Prevent Self-Approving Reviews (Bypass Moderation)
+        if (!user_can($user_id, 'moderate_comments')) {
+            $request['status'] = (get_option('comment_moderation') === '1'
+                || get_option('woocommerce_review_rating_verification_required') === 'yes')
+                ? 'hold' : 'approved';
+        }
+
+        // Check verified owner requirement
+        if (get_option('woocommerce_review_rating_verification_required') === 'yes') {
+            if ( ! wc_customer_bought_product( $user->user_email, $user->ID, $product_id ) ) {
+                return parent::sendError("verification_required", "Only verified owners can leave reviews for this product.", 403);
             }
         }
-       
-		$images = $request['images'];
+
+        // Validate order ID if provided
+        if (isset($request['comment_meta']) && is_array($request['comment_meta']) && isset($request['comment_meta']['order_id'])) {
+            $order_id = absint($request['comment_meta']['order_id']);
+            $order = wc_get_order($order_id);
+
+            if (!$order || $order->get_customer_id() !== $user_id) {
+                return parent::sendError("no_permission", "You don't have permission to use this order ID.", 403);
+            }
+        }
+
         $controller = new WC_REST_Product_Reviews_Controller();
-		$response = $controller->create_item($request);
-		if(is_wp_error($response)){
-			return $response;
-		}
-		$comment_id = $response->get_data()['id'];
-        if(isset($request['comment_meta']) && is_array($request['comment_meta']) && !empty($request['comment_meta'])){
+        $response = $controller->create_item($request);
+
+        if (is_wp_error($response)) {
+            return $response;
+        }
+
+        $comment_id = $response->get_data()['id'];
+
+        // Secure Comment Meta Injection (Allowlist)
+        if (isset($request['comment_meta']) && is_array($request['comment_meta']) && !empty($request['comment_meta'])) {
+            $allowed_meta = array('order_id', 'variation_id'); // Only allow specific keys
             foreach ($request['comment_meta'] as $key => $value) {
-                add_comment_meta($comment_id, $key, $value, true);
+                if (in_array($key, $allowed_meta, true)) {
+                    add_comment_meta($comment_id, $key, sanitize_text_field($value), true);
+                }
             }
         }
-		global $WCFMmp;
-		if(apply_filters('wcfm_is_pref_vendor_reviews', true) && $WCFMmp){
-			$WCFMmp->wcfmmp_reviews->wcfmmp_add_store_review( $comment_id );
-		}    
-		if(is_plugin_active('woo-photo-reviews/woo-photo-reviews.php') || is_plugin_active('woocommerce-photo-reviews/woocommerce-photo-reviews.php')){
-            if(isset($images)){
-                $images = $images;
-				$images = array_filter(explode(',', $images));
+
+        global $WCFMmp;
+        if (apply_filters('wcfm_is_pref_vendor_reviews', true) && $WCFMmp) {
+            $WCFMmp->wcfmmp_reviews->wcfmmp_add_store_review($comment_id);
+        }
+
+        if (is_plugin_active('woo-photo-reviews/woo-photo-reviews.php') || is_plugin_active('woocommerce-photo-reviews/woocommerce-photo-reviews.php')) {
+            if (isset($request['images'])) {
+                $images = array_filter(explode(',', $request['images']));
                 $count = 0;
                 $img_arr = array();
-				$user_id = get_comment($comment_id)->user_id;
-                foreach($images as $image){
-                    $img_id = upload_image_from_mobile($image, $count ,$user_id);
-					$img_arr[] = $img_id;
-					$count++;
+                $review_user_id = get_comment($comment_id)->user_id;
+
+                foreach ($images as $image) {
+                    $img_id = upload_image_from_mobile($image, $count, $review_user_id);
+                    $img_arr[] = $img_id;
+                    $count++;
                 }
-				update_comment_meta( $comment_id, 'reviews-images', $img_arr );
+                update_comment_meta($comment_id, 'reviews-images', $img_arr);
             }
         }
-        $review = get_comment( $comment_id );
-        $response = $controller->prepare_item_for_response( $review, $request );
-        return $response;
+
+        $review = get_comment($comment_id);
+        return $controller->prepare_item_for_response($review, $request);
     }
 
     public function get_ddates($request)
@@ -1414,13 +1471,59 @@ class FlutterWoo extends FlutterBaseController
         }
     }
 
+    public function get_ddates_v2($request)
+    {
+        $routes = rest_get_server()->get_routes();
+        if (!isset($routes['/orddd/v1/delivery_schedule']) && !isset($routes['/orddd/v1/delivery_schedule/(?P<setting_id>[\\d]+)'])) {
+            return parent::send_invalid_plugin_error("You need to install and activate Order Delivery Date Pro for WooCommerce with REST API support to use this api");
+        }
+
+        $setting_id = isset($request['setting_id']) ? absint($request['setting_id']) : 0;
+        $route = '/orddd/v1/delivery_schedule';
+        if ($setting_id > 0) {
+            $route .= '/' . $setting_id;
+        }
+
+        $allowed_params = array(
+            'mode',
+            'shipping_method',
+            'category',
+            'pickup_location',
+            'date',
+            'number_of_dates',
+            'ids',
+        );
+
+        $proxy_request = new WP_REST_Request('GET', $route);
+        foreach ($allowed_params as $param) {
+            if (isset($request[$param]) && $request[$param] !== '') {
+                $proxy_request->set_param($param, sanitize_text_field(wp_unslash($request[$param])));
+            }
+        }
+
+        $response = rest_do_request($proxy_request);
+        if (is_wp_error($response)) {
+            return $response;
+        }
+
+        $status = $response->get_status();
+        if ($status >= 400) {
+            $data = $response->get_data();
+            $message = isset($data['message']) ? $data['message'] : 'Unable to fetch delivery schedules';
+            $code = isset($data['code']) ? $data['code'] : 'invalid_item';
+            return parent::sendError($code, $message, $status);
+        }
+
+        return $response;
+    }
+
     function check_product($request){
         $params = $request->get_url_params();
 		$token = sanitize_text_field($request['token']);
 		$postid = sanitize_text_field($params['id']);
 
         if (!empty($token)) {
-            $cookie = urldecode(base64_decode($token));
+            $cookie = mstore_decode_user_cookie($token);
         }
         if(!empty($cookie)){
             $userid = validateCookieLogin($cookie);
@@ -1481,7 +1584,7 @@ class FlutterWoo extends FlutterBaseController
         $helper = new FlutterBlogHelper();
         return $helper->get_blog_from_dynamic_link($request);
     }
-    
+
     function create_blog($request){
 		$helper = new FlutterBlogHelper();
         return $helper->create_blog($request);
@@ -1510,6 +1613,8 @@ class FlutterWoo extends FlutterBaseController
         $page = 1;
         $per_page = 10;
         $lang = null;
+        $orderby = 'modified';
+        $order = 'DESC';
 
         if (isset($request['page'])) {
             $page = sanitize_text_field($request['page']);
@@ -1526,6 +1631,20 @@ class FlutterWoo extends FlutterBaseController
         if (isset($request['lang'])) {
             $lang = sanitize_text_field($request['lang']);
         }
+
+        if (isset($request['orderby'])) {
+            $allowed_orderby = array('date', 'modified', 'title', 'rand', 'id', 'menu_order');
+            $requested_orderby = sanitize_text_field($request['orderby']);
+            if(in_array($requested_orderby, $allowed_orderby)){
+                $orderby = $requested_orderby;
+            }
+        }
+        if (isset($request['order'])) {
+            $requested_order = strtoupper(sanitize_text_field($request['order']));
+            if(in_array($requested_order, array('ASC', 'DESC'))){
+                $order = $requested_order;
+            }
+        }
         $page = max(1, absint($page));
         $per_page = max(1, absint($per_page));
         $offset = ($page - 1) * $per_page;
@@ -1538,25 +1657,41 @@ class FlutterWoo extends FlutterBaseController
         $sql .= " INNER JOIN $post_table ON $post_table.ID = $postmeta_table.post_id";
         $sql .= " WHERE $postmeta_table.meta_key='_mstore_video_url' AND $postmeta_table.meta_value IS NOT NULL AND $postmeta_table.meta_value <> ''";
         $sql .= " AND $post_table.post_type = 'product' AND $post_table.post_status = 'publish'";
-        $sql .= " ORDER BY $post_table.post_modified DESC";
+
+        if($orderby === 'rand'){
+            $sql .= " ORDER BY RAND()";
+        } elseif($orderby === 'date'){
+            $sql .= " ORDER BY $post_table.post_date " . $order;
+        } elseif($orderby === 'title'){
+            $sql .= " ORDER BY $post_table.post_title " . $order;
+        } elseif($orderby === 'id'){
+            $sql .= " ORDER BY $post_table.ID " . $order;
+        } elseif($orderby === 'menu_order'){
+            $sql .= " ORDER BY $post_table.menu_order " . $order;
+        } else {
+            $sql .= " ORDER BY $post_table.post_modified " . $order;
+        }
+
         $sql .= " LIMIT %d OFFSET %d";
         $sql = $wpdb->prepare($sql, $per_page, $offset);
-       
+
         $items = $wpdb->get_results($sql);
 
         if(count($items) > 0){
             $controller = new CUSTOM_WC_REST_Products_Controller();
             $req = new WP_REST_Request('GET');
+            // When rand is requested, use 'include' so WC preserves the random order from SQL
+            $wc_orderby = ($orderby === 'rand') ? 'include' : $orderby;
             $params = array('include' => array_map(function($item){
                 return $item->post_id;
-            }, $items), 'page' => 1, 'per_page' => count($items), 'orderby' => 'modified', 'order' => 'DESC');
+            }, $items), 'page' => 1, 'per_page' => count($items), 'orderby' => $wc_orderby, 'order' => $order);
             if($lang != null){
                 $params['lang'] = $lang;
             }
             $req->set_query_params($params);
             $response = $controller->get_items($req);
             return $response->get_data();
-        }else{
+        } else {
             return [];
         }
 	}
@@ -1617,10 +1752,10 @@ class FlutterWoo extends FlutterBaseController
 
     /**
      * custom_product_tabs_content
-     * 
+     *
      * Clone from function `custom_product_tabs_content` of
      * `PSCW_PRODUCT_SIZE_CHART_F_WOO_Front_end`
-     * 
+     *
      * Plugin Product Size Chart For WooCommerce
      * https://wordpress.org/plugins/product-size-chart-for-woo/
      *

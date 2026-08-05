@@ -721,26 +721,42 @@ class FlutterVendor extends FlutterBaseController
     {
         $cookie = $request["cookie"];
         if (isset($request["token"])) {
-            $cookie = urldecode(base64_decode($request["token"]));
+            $cookie = mstore_decode_user_cookie($request["token"]);
         }
         $user_id = validateCookieLogin($cookie);
         if (is_wp_error($user_id)) {
             return $user_id;
         }
 
-        $is_admin = checkIsAdmin($user_id);
+        $user = get_userdata($user_id);
 
-        if($is_admin){
+        // Use capability check to include both Administrators and Shop Managers
+        $is_admin = user_can($user_id, 'manage_woocommerce');
+
+        $helper = null; // Initialize as null to ensure strict assignment
+
+        // Route to Admin helper
+        if ($is_admin) {
             $helper = new VendorAdminWooHelper();
-        }else if (is_plugin_active('dokan-lite/dokan.php')) {
-                $helper = new VendorAdminDokanHelper();
-            }else if(is_plugin_active('wc-multivendor-marketplace/wc-multivendor-marketplace.php')){
-                $helper = new VendorAdminWCFMHelper();
-            }else{
-                $helper = new VendorAdminWooHelper();
-            }
-        
-        $res =  $helper->flutter_get_orders($request, $user_id);
+        }
+        // Route to Dokan helper
+        else if (is_plugin_active('dokan-lite/dokan.php') && function_exists('dokan_is_user_seller') && dokan_is_user_seller($user_id)) {
+            $helper = new VendorAdminDokanHelper();
+        }
+        // Route to WCFM helper (supports native wcfm_is_vendor and various legacy seller roles)
+        else if (is_plugin_active('wc-multivendor-marketplace/wc-multivendor-marketplace.php')
+            && ((function_exists('wcfm_is_vendor') && wcfm_is_vendor($user_id))
+                || ($user && !empty($user->roles) && array_intersect($user->roles, array('wcfm_vendor', 'seller', 'vendor'))))) {
+            $helper = new VendorAdminWCFMHelper();
+        }
+
+        // Block unauthorized access
+        if ($helper === null) {
+            return parent::sendError("invalid_role", "You must be a vendor or store manager to access this resource.", 403);
+        }
+
+        // Fetch vendor orders
+        $res = $helper->flutter_get_orders($request, $user_id);
 
         return $res->get_data()['response'];
     }
@@ -755,7 +771,7 @@ class FlutterVendor extends FlutterBaseController
                     $distance = 10;
                 }
             }
-            
+
             $page = 1;
             $limit = 10;
             if (isset($request['page'])) {
@@ -781,7 +797,7 @@ class FlutterVendor extends FlutterBaseController
                 '_store_filter_nonce'  => wp_create_nonce('_store_filter_nonce'),
             );
             if(isset($request['search'])){
-                $requested_data['address'] = sanitize_text_field($request['search']);  
+                $requested_data['address'] = sanitize_text_field($request['search']);
             }
             if(isset($request['latitude']) && isset($request['longitude'])){
                 $requested_data['latitude'] = sanitize_text_field($request['latitude']);

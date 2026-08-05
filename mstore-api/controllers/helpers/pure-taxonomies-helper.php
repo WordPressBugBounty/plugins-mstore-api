@@ -78,70 +78,10 @@ class MStore_Pure_Taxonomies_Helper {
      * @return string SVG URL or empty string if cannot convert
      */
     private function convert_icon_class_to_url($icon_class) {
-        if (empty($icon_class) || !is_string($icon_class)) {
+        if (!class_exists('MStore_Icon_Helper')) {
             return '';
         }
-
-        $icon_name = trim($icon_class);
-
-        // Already a URL, return as-is
-        if (strpos($icon_name, 'http') === 0) {
-            return $icon_name;
-        }
-
-        // MyListing Material Icons: "mi bookmark_border" -> "ic:bookmark-border"
-        // Iconify uses 'ic' collection for Material Icons
-        if (strpos($icon_name, 'mi ') === 0) {
-            $name = trim(str_replace('mi ', '', $icon_name));
-            // Convert underscores to dashes for Iconify compatibility
-            $name = str_replace('_', '-', $name);
-            if (!empty($name) && preg_match('/^[a-zA-Z0-9-]+$/', $name)) {
-                return "https://api.iconify.design/ic:{$name}.svg";
-            }
-        }
-
-        // MyListing custom icon font: "icon-location-pin-4" -> Not supported by Iconify
-        // These are theme-specific icon fonts loaded via CSS, cannot convert to URL
-        // User must switch to icon_type='image' or use Material Icons/Font Awesome instead
-        if (strpos($icon_name, 'icon-') === 0) {
-            // Return empty - custom theme icons require image upload or different icon choice
-            return '';
-        }
-
-        // Font Awesome and other standard icon libraries
-        // Order matters - check specific patterns first
-        // Support both short (fas fa-) and long (fa-solid fa-) formats
-        $icon_map = array(
-            // Long format (ListingPro style)
-            'fa-brands fa-' => 'fa-brands:',
-            'fa-solid fa-' => 'fa-solid:',
-            'fa-regular fa-' => 'fa-regular:',
-            'fa-light fa-' => 'fa-light:',
-            // Short format (standard)
-            'fab fa-' => 'fa-brands:',
-            'fas fa-' => 'fa-solid:',
-            'far fa-' => 'fa-regular:',
-            'fal fa-' => 'fa-light:',
-            'fa fa-'  => 'fa-solid:',
-            // Other icon libraries
-            'im im-icon-' => 'im:',
-            'material-icons ' => 'material-symbols:',
-        );
-
-        foreach ($icon_map as $prefix => $collection) {
-            if (strpos($icon_name, $prefix) === 0) {
-                $name = trim(str_replace($prefix, '', $icon_name));
-
-                // Validate: only alphanumeric, dash, underscore
-                if (empty($name) || preg_match('/[^a-zA-Z0-9-_]/', $name)) {
-                    return '';
-                }
-
-                return "https://api.iconify.design/{$collection}{$name}.svg";
-            }
-        }
-
-        return '';
+        return MStore_Icon_Helper::convert_icon_class_to_url($icon_class);
     }
 
     /**

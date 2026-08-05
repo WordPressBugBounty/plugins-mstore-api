@@ -301,10 +301,10 @@ class FlutterVendorAdmin extends FlutterBaseController
                 $order_id = sanitize_text_field($request["wcfm_tracking_order_id"]);
                 $delivery_boy = sanitize_text_field($request["wcfm_delivery_boy"]);
 
-                if (is_plugin_active('local-delivery-drivers-for-woocommerce/local-delivery-drivers-for-woocommerce.php') || is_plugin_active('local-delivery-drivers-for-woocommerce-premium/local-delivery-drivers-for-woocommerce.php')) {
+                if (mstore_is_lddfw_active()) {
                     $meta_key = 'lddfw_driverid';
                 }
-                else if (is_plugin_active('delivery-drivers-for-woocommerce/delivery-drivers-for-woocommerce.php') || is_plugin_active('delivery-drivers-for-woocommerce-master/delivery-drivers-for-woocommerce.php')) {
+                else if (mstore_is_ddwc_active()) {
                     $meta_key = 'ddwc_driver_id';
                 }
                 else {

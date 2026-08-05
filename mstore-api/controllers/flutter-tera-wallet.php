@@ -328,30 +328,60 @@ class FlutterTeraWallet extends FlutterBaseController
             if (is_wp_error($user_id)) {
                 return $user_id;
             }
+            $order = wc_get_order(isset($params['order_id']) ? absint($params['order_id']) : 0);
+            if (!$order) {
+                return parent::sendError("invalid_order", "Order not found", 404);
+            }
+
+            // Ownership check, matching partial_payment() below. Without it any
+            // logged-in user could complete another customer's order.
+            if ((int) $order->get_customer_id() !== (int) $user_id) {
+                return parent::sendError("no_permission", "You don't have permission to pay for this order", 403);
+            }
+
+            // Only settle orders that still need paying, so a completed order
+            // cannot be re-submitted.
+            if (!$order->needs_payment()) {
+                return array('result' => 'success');
+            }
+
+            // This endpoint pays from the wallet, so it must only ever be used for
+            // the wallet gateway. Previously any other payment method fell into a
+            // bare else that called payment_complete() without debiting anything,
+            // which let one small top-up complete unlimited orders for free.
+            if ($order->get_payment_method() !== 'wallet') {
+                return parent::sendError(
+                    "invalid_payment_method",
+                    "This endpoint can only be used for orders paying with the wallet.",
+                    400
+                );
+            }
+
             wp_set_current_user($user_id);
-            $order = wc_get_order($params['order_id']);
             if (($order->get_total('edit') > woo_wallet()->wallet->get_wallet_balance(get_current_user_id(), 'edit')) && apply_filters('woo_wallet_disallow_negative_transaction', (woo_wallet()->wallet->get_wallet_balance(get_current_user_id(), 'edit') <= 0 || $order->get_total('edit') > woo_wallet()->wallet->get_wallet_balance(get_current_user_id(), 'edit')), $order->get_total('edit'), woo_wallet()->wallet->get_wallet_balance(get_current_user_id(), 'edit'))) {
                 $error = sprintf(__('Your wallet balance is low. Please add %s to proceed with this transaction.', 'woo-wallet'), $order->get_total('edit') - woo_wallet()->wallet->get_wallet_balance(get_current_user_id(), 'edit'));
                 return parent::sendError("wallet_error", $error, 400);
             }
-            if($order->get_payment_method() == "wallet"){
-				$wallet_response = woo_wallet()->wallet->debit(get_current_user_id(), $order->get_total('edit'), apply_filters('woo_wallet_order_payment_description', __('For order payment #', 'woo-wallet') . $order->get_order_number(), $order));
-				if ($wallet_response) {
-                    $order->set_transaction_id( $wallet_response );
-					do_action( 'woo_wallet_payment_processed', $params['order_id'], $wallet_response );
-					$order->save();
 
-                    // Reduce stock levels.
-                    wc_reduce_stock_levels( $params['order_id'] );
+            $wallet_response = woo_wallet()->wallet->debit(
+                get_current_user_id(),
+                $order->get_total('edit'),
+                apply_filters('woo_wallet_order_payment_description', __('For order payment #', 'woo-wallet') . $order->get_order_number(), $order)
+            );
 
-                    // Complete order payment.
-                    $order->payment_complete();
-				}else{
-                    return parent::sendError("error_debit", "Something went wrong with processing payment please try again.", 400);
-                }
-			}else{
-				$order->payment_complete();
-			}
+            if (!$wallet_response) {
+                return parent::sendError("error_debit", "Something went wrong with processing payment please try again.", 400);
+            }
+
+            $order->set_transaction_id($wallet_response);
+            do_action('woo_wallet_payment_processed', $order->get_id(), $wallet_response);
+            $order->save();
+
+            // Reduce stock levels.
+            wc_reduce_stock_levels($order->get_id());
+
+            // Complete order payment.
+            $order->payment_complete();
 
             // Return thankyou redirect
             return array(
