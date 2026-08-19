@@ -430,10 +430,39 @@ class FlutterUserController extends FlutterBaseController
     }
 
 
+    /**
+     * Simple per-IP throttle for endpoints that must stay public.
+     *
+     * @param string $action Bucket name.
+     * @param int    $limit  Allowed requests within the window.
+     * @param int    $window Window length in seconds.
+     * @return bool True when the request is allowed.
+     */
+    private function check_request_rate_limit($action, $limit = 20, $window = 300)
+    {
+        $ip = isset($_SERVER['REMOTE_ADDR']) ? sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'])) : '';
+        if ('' === $ip) {
+            return true;
+        }
+        $key = 'mstore_rl_' . md5($action . '|' . $ip);
+        $count = (int)get_transient($key);
+        if ($count >= $limit) {
+            return false;
+        }
+        set_transient($key, $count + 1, $window);
+        return true;
+    }
+
     public function check_user($request)
     {
+        // This endpoint is used before login (registration / phone login), so it cannot
+        // require authentication. Throttle it instead to prevent account enumeration.
+        if (!$this->check_request_rate_limit('check_user')) {
+            return parent::sendError("too_many_requests", "Too many requests. Please try again later.", 429);
+        }
+
         $phone = isset($request['phone']) ? preg_replace('/[^\d+\-().\s]/', '', sanitize_text_field($request['phone'])) : null;
-        $username = $request['username'];
+        $username = isset($request['username']) ? sanitize_text_field($request['username']) : null;
         if (isset($phone)) {
             $args = array('meta_key' => 'registered_phone_number', 'meta_value' => $phone);
             $search_users = get_users($args);
@@ -1311,8 +1340,27 @@ class FlutterUserController extends FlutterBaseController
     function get_points($request)
     {
         global $wc_points_rewards;
-        $user_id = (int)$request['user_id'];
-        $current_page = (int)$request['page'];
+
+        if (!class_exists('WC_Points_Rewards_Manager') || !class_exists('WC_Points_Rewards_Points_Log') || !isset($wc_points_rewards)) {
+            return parent::send_invalid_plugin_error("You need to install WooCommerce Points and Rewards plugin to use this api");
+        }
+
+        $auth_user_id = $this->get_authenticated_user_id($request);
+        if (is_wp_error($auth_user_id)) {
+            return $auth_user_id;
+        }
+
+        $user_id = isset($request['user_id']) ? (int)$request['user_id'] : 0;
+        if (empty($user_id)) {
+            $user_id = $auth_user_id;
+        }
+
+        // A user may only read their own points balance and log.
+        if ($user_id !== $auth_user_id && !user_can($auth_user_id, 'list_users')) {
+            return parent::sendError("unauthorized", "You are not allowed to do this", 401);
+        }
+
+        $current_page = isset($request['page']) ? (int)$request['page'] : 0;
 
         $points_balance = WC_Points_Rewards_Manager::get_users_points($user_id);
         $points_label = $wc_points_rewards->get_points_label($points_balance);
@@ -1340,6 +1388,43 @@ class FlutterUserController extends FlutterBaseController
             'count' => $count,
             'events' => $events
         );
+    }
+
+    /**
+     * Resolve the user making the request from the cookie/token parameter,
+     * the User-Cookie header or the current WordPress authentication context.
+     *
+     * @param WP_REST_Request $request Current request.
+     * @return int|WP_Error Authenticated user ID or an error when not logged in.
+     */
+    private function get_authenticated_user_id($request)
+    {
+        $cookie = null;
+        if (isset($request["token"]) && is_string($request["token"])) {
+            $cookie = mstore_decode_user_cookie($request["token"]);
+        } elseif (isset($request["cookie"]) && is_string($request["cookie"])) {
+            $cookie = $request["cookie"];
+        } elseif (is_object($request) && method_exists($request, 'get_header')) {
+            $header_cookie = $request->get_header("User-Cookie");
+            if (!empty($header_cookie)) {
+                $cookie = get_header_user_cookie($header_cookie);
+            }
+        }
+
+        if (!empty($cookie)) {
+            $user_id = validateCookieLogin($cookie);
+            if (!is_wp_error($user_id)) {
+                return (int)$user_id;
+            }
+        }
+
+        // Fallback to any other authentication layer (JWT, application password, cookie).
+        $current_user_id = get_current_user_id();
+        if (!empty($current_user_id)) {
+            return (int)$current_user_id;
+        }
+
+        return parent::sendError("unauthorized", "You are not allowed to do this", 401);
     }
 
     function update_user_profile()

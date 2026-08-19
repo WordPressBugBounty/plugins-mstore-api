@@ -75,12 +75,26 @@ class FlutterPointsOfflineStore extends FlutterBaseController
             return new WP_Error( 'invalid_user', 'User not found', array( 'status' => 404 ) );
         }
 
+        // Only the owner of the account, a shop manager or an administrator may read it.
+        $auth_user_id = validateCookieLogin(get_header_user_cookie($request->get_header("User-Cookie")));
+        if (is_wp_error($auth_user_id)) {
+            return $auth_user_id;
+        }
+        $auth_user = get_userdata($auth_user_id);
+        $is_manager = $auth_user && (in_array('shop_manager', $auth_user->roles) || in_array('administrator', $auth_user->roles));
+        if ((int)$auth_user_id !== $user_id && !$is_manager) {
+            return parent::sendError("unauthorized", "You are not allowed to do this", 401);
+        }
+
         if (!class_exists('WC_Points_Rewards_Manager')) {
             return parent::send_invalid_plugin_error("You need to install WooCommerce Points and Rewards plugin to use this api");
         }
 
         //get user info
         $user = get_userdata($user_id);
+        if (!$user) {
+            return new WP_Error( 'invalid_user', 'User not found', array( 'status' => 404 ) );
+        }
         $avatar = get_user_meta($user_id, 'user_avatar', true);
         if (!isset($avatar) || $avatar == "" || is_bool($avatar)) {
             $avatar = get_avatar_url($user_id);

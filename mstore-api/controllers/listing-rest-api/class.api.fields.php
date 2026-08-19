@@ -1983,10 +1983,6 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
                     $formatted_fields = array();
                     foreach ($fields_data as $field) {
-                        if (isset($field['type']) && $field['type'] === 'header') {
-                            continue;
-                        }
-
                         $formatted_fields[] = $format_listeo_editor_field($field, true);
                     }
 
