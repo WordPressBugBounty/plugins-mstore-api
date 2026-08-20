@@ -1,4 +1,8 @@
 <?php
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 /*
 * Template Name: Mstore API
 */
@@ -17,8 +21,9 @@ if (isset($_POST['order'])) {
     $code = sanitize_text_field(filter_input(INPUT_GET, 'code'));
     global $wpdb;
     $table_name = $wpdb->prefix . "mstore_checkout";
-    $sql = $wpdb->prepare("SELECT * FROM $table_name WHERE code = %s", $code);
-    $item = $wpdb->get_row($sql);
+    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+    $sql = $wpdb->prepare( 'SELECT * FROM `' . esc_sql( $table_name ) . '` WHERE code = %s', $code );
+    $item = $wpdb->get_row($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
     if ($item) {
         $data = json_decode(urldecode(base64_decode($item->order)), true);
     } else {
@@ -357,7 +362,7 @@ if ($data != null):
 
                                             <?php do_action('woocommerce_checkout_after_customer_details'); ?>
 
-                                            <h3 id="order_review_heading"><?php esc_html_e('Your order', 'woocommerce'); ?></h3>
+                                            <h3 id="order_review_heading"><?php esc_html_e('Your order', 'mstore-api'); ?></h3>
 
                                             <?php do_action('woocommerce_checkout_before_order_review'); ?>
 
@@ -365,8 +370,8 @@ if ($data != null):
                                                 <table class="shop_table">
                                                     <thead>
                                                     <tr>
-                                                        <th class="product-name"><?php esc_html_e('Product', 'woocommerce'); ?></th>
-                                                        <th class="product-total"><?php esc_html_e('Total', 'woocommerce'); ?></th>
+                                                        <th class="product-name"><?php esc_html_e('Product', 'mstore-api'); ?></th>
+                                                        <th class="product-total"><?php esc_html_e('Total', 'mstore-api'); ?></th>
                                                     </tr>
                                                     </thead>
                                                     <tbody>
@@ -378,12 +383,12 @@ if ($data != null):
                                                             ?>
                                                             <tr class="<?php echo esc_attr(apply_filters('woocommerce_cart_item_class', 'cart_item', $cart_item, $cart_item_key)); ?>">
                                                                 <td class="product-name">
-                                                                <?php echo apply_filters('woocommerce_cart_item_name', $_product->get_name(), $cart_item, $cart_item_key) . '&nbsp;'; ?>
-                                                                <?php echo apply_filters('woocommerce_checkout_cart_item_quantity', ' <strong class="product-quantity">' . sprintf('&times; %s', $cart_item['quantity']) . '</strong>', $cart_item, $cart_item_key); ?>
-                                                                <?php echo wc_get_formatted_cart_item_data($cart_item); ?>
+                                                                <?php echo wp_kses_post(apply_filters('woocommerce_cart_item_name', $_product->get_name(), $cart_item, $cart_item_key) . '&nbsp;'); ?>
+                                                                <?php echo wp_kses_post(apply_filters('woocommerce_checkout_cart_item_quantity', ' <strong class="product-quantity">' . sprintf('&times; %s', $cart_item['quantity']) . '</strong>', $cart_item, $cart_item_key)); ?>
+                                                                <?php echo wp_kses_post(wc_get_formatted_cart_item_data($cart_item)); ?>
                                                                 </td>
                                                                 <td class="product-total">
-                                                                <?php echo apply_filters('woocommerce_cart_item_subtotal', WC()->cart->get_product_subtotal($_product, $cart_item['quantity']), $cart_item, $cart_item_key); ?>
+                                                                <?php echo wp_kses_post(apply_filters('woocommerce_cart_item_subtotal', WC()->cart->get_product_subtotal($_product, $cart_item['quantity']), $cart_item, $cart_item_key)); ?>
                                                                 </td>
                                                             </tr>
                                                             <?php
@@ -393,7 +398,7 @@ if ($data != null):
                                                     </tbody>
                                                     <tfoot>
                                                     <tr class="cart-subtotal">
-                                                        <th><?php esc_html_e('Subtotal', 'woocommerce'); ?></th>
+                                                        <th><?php esc_html_e('Subtotal', 'mstore-api'); ?></th>
                                                         <td><?php wc_cart_totals_subtotal_html(); ?></td>
                                                     </tr>
 
@@ -441,7 +446,7 @@ if ($data != null):
                                                     <?php endif; ?>
 
                                                     <tr class="order-total">
-                                                        <th><?php esc_html_e('Total', 'woocommerce'); ?></th>
+                                                        <th><?php esc_html_e('Total', 'mstore-api'); ?></th>
                                                         <td><?php wc_cart_totals_order_total_html(); ?></td>
                                                     </tr>
 
@@ -466,7 +471,7 @@ if ($data != null):
 
                                                     <?php do_action('woocommerce_review_order_before_submit'); ?>
 
-                                                    <?php echo apply_filters('woocommerce_order_button_html', '<input type="submit" class="button alt" name="woocommerce_checkout_place_order" id="place_order" value="" />'); ?>
+                                                    <?php echo wp_kses_post(apply_filters('woocommerce_order_button_html', '<input type="submit" class="button alt" name="woocommerce_checkout_place_order" id="place_order" value="" />')); ?>
 
                                                     <?php do_action('woocommerce_review_order_after_submit'); ?>
 

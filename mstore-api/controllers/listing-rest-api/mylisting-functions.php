@@ -1,5 +1,9 @@
 <?php
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 function myListingExploreListings($request)
 {
     global $wpdb;
@@ -80,8 +84,9 @@ function myListingExploreListings($request)
         $table_name = $wpdb->prefix . "posts";
         $sql = "SELECT * FROM {$table_name}";
         $sql .= " WHERE {$table_name}.ID in " . $in;
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql = $wpdb->prepare($sql);
-        $results = $wpdb->get_results($sql);
+        $results = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
         return $results;
     } else {

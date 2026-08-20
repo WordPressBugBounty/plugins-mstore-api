@@ -1,4 +1,9 @@
 <?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 require_once(__DIR__ . '/flutter-base.php');
 
 /*
@@ -143,7 +148,7 @@ class FlutterSmartCOD extends FlutterBaseController
 		 * Subtract the advance
 		 */
 		$item = new WC_Order_Item_Fee();
-		$item->set_name( __( 'Advance amount', 'wc-smart-cod' ) );
+            $item->set_name( __( 'Advance amount', 'mstore-api' ) );
 		$item->set_total( - $advance_amount );
 		$item->add_meta_data( 'is_wsc_advance_fee', true );
 		$item->set_tax_status( 'none' );

@@ -1,4 +1,9 @@
 <?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 require_once(__DIR__ . '/flutter-base.php');
 
 /*
@@ -11,6 +16,32 @@ require_once(__DIR__ . '/flutter-base.php');
 
 class FlutterExpressPay extends FlutterBaseController
 {
+    private function expresspay_post_json( $url, $payload ) {
+        return wp_remote_post(
+            $url,
+            array(
+                'timeout' => 15,
+                'headers' => array(
+                    'Content-Type' => 'application/json',
+                ),
+                'body'    => wp_json_encode( $payload ),
+            )
+        );
+    }
+
+    private function expresspay_post_form( $url, $payload ) {
+        return wp_remote_post(
+            $url,
+            array(
+                'timeout' => 15,
+                'headers' => array(
+                    'Content-Type' => 'application/x-www-form-urlencoded',
+                ),
+                'body'    => $payload,
+            )
+        );
+    }
+
     /**
      * Endpoint namespace
      *
@@ -117,23 +148,16 @@ class FlutterExpressPay extends FlutterBaseController
             "hash" => $hash
         ];
 
-        $getter = curl_init($url);
-        curl_setopt($getter, CURLOPT_POST, 1);
-        curl_setopt($getter, CURLOPT_POSTFIELDS, json_encode($main_json));
-        curl_setopt($getter, CURLOPT_HTTPHEADER, array('Content-Type:application/json'));
-        curl_setopt($getter, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($getter, CURLOPT_TIMEOUT, 15);
+        $result = $this->expresspay_post_json( $url, $main_json );
+        $http_code = is_wp_error( $result ) ? 0 : wp_remote_retrieve_response_code( $result );
+        $response_body = is_wp_error( $result ) ? '' : wp_remote_retrieve_body( $result );
 
-        $result = curl_exec($getter);
-        $http_code = curl_getinfo($getter, CURLINFO_HTTP_CODE);
-        curl_close($getter);
-
-        if ($result === false || $http_code !== 200) {
+        if ( is_wp_error( $result ) || $http_code !== 200 ) {
             $order->add_order_note('Security Alert: ExpressPay S2S verification request failed or returned HTTP ' . $http_code);
             return new WP_Error('s2s_verification_failed', 'Could not verify payment with ExpressPay.', array('status' => 502));
         }
 
-        $response = json_decode($result, true);
+        $response = json_decode($response_body, true);
 
         // SECURITY CHECK 3: Validate Payment Status
         if (isset($response['status']) && $response['status'] == 'settled') {
@@ -276,7 +300,7 @@ class FlutterExpressPay extends FlutterBaseController
 
         $order_json = array(
             'number' => "$order_id",
-            'description' => __('Payment Order # ', 'woocommerce') . $order_id . __(' in the store ', 'woocommerce') . home_url('/'),
+            'description' => __('Payment Order # ', 'mstore-api') . $order_id . __(' in the store ', 'mstore-api') . home_url('/'),
             'amount' => $amount,
             'currency' => $currency,
         );
@@ -299,7 +323,7 @@ class FlutterExpressPay extends FlutterBaseController
             'order_id'          => 'ORDER-' . $order_id . time(),
             'order_amount'      => $amount,
             'order_currency'    => $currency,
-            'order_description' => __('Product Order # ', 'woocommerce') . $order_id,
+            'order_description' => __('Product Order # ', 'mstore-api') . $order_id,
             'card_number'       => $card_number,
             'card_exp_month'    => $month,
             'card_exp_year'     => $year,
@@ -318,25 +342,20 @@ class FlutterExpressPay extends FlutterBaseController
         ];
 
 
-        $fields = "";
-        foreach ($data as $key => $value) {
-            $fields .= $key . '=' . $value . '&';
-        }
-        $getter = curl_init($action_adr);
-        curl_setopt($getter, CURLOPT_POST, 1);
-        curl_setopt($getter, CURLOPT_POSTFIELDS, rtrim($fields, '&'));
-        curl_setopt($getter, CURLOPT_HTTPHEADER, array('Content-Type:application/x-www-form-urlencoded'));
-        curl_setopt($getter, CURLOPT_RETURNTRANSFER, true);
+        $result = $this->expresspay_post_form( $action_adr, $data );
+        $httpcode = is_wp_error( $result ) ? 0 : wp_remote_retrieve_response_code( $result );
+        $response_body = is_wp_error( $result ) ? '' : wp_remote_retrieve_body( $result );
+        $response = json_decode($response_body, true);
 
-        $result = curl_exec($getter);
-        $httpcode = curl_getinfo($getter, CURLINFO_HTTP_CODE);
-
-        $response = json_decode($result, true);
-
-        if ($httpcode != 200) {
+        if (is_wp_error($result) || $httpcode != 200) {
             $errors = '';
-            foreach($response['errors'] as $value){
-                $errors .= $value['error_code'] . ' : ' .$value['error_message'].'<br>';
+            if (isset($response['errors']) && is_array($response['errors'])) {
+                foreach($response['errors'] as $value){
+                    $errors .= $value['error_code'] . ' : ' .$value['error_message'].'<br>';
+                }
+            }
+            if ($errors === '') {
+                $errors = 'Please try again.';
             }
             return parent::sendError("invalid_payment", $errors, 400);
         }

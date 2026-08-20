@@ -1,4 +1,9 @@
 <?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 require_once(__DIR__ . '/flutter-base.php');
 require_once(__DIR__ . '/helpers/apple-sign-in-helper.php');
 require_once(__DIR__ . '/helpers/facebook-jwt-helper.php');
@@ -6,6 +11,17 @@ require_once(__DIR__ . '/helpers/firebase-phone-auth-helper.php');
 
 class FlutterUserController extends FlutterBaseController
 {
+    private function mstore_get_network_site_name() {
+        if ( function_exists( 'get_network' ) ) {
+            $network = get_network();
+            if ( $network && isset( $network->site_name ) ) {
+                return $network->site_name;
+            }
+        }
+
+        return wp_specialchars_decode( get_option( 'blogname' ), ENT_QUOTES );
+    }
+
     private $allowed_profile_meta_keys = array(
         'billing_first_name',
         'billing_last_name',
@@ -516,18 +532,30 @@ class FlutterUserController extends FlutterBaseController
         }
 
         if (is_multisite()) {
-            $site_name = get_network()->site_name;
+            $site_name = $this->mstore_get_network_site_name();
         } else {
             $site_name = wp_specialchars_decode(get_option('blogname'), ENT_QUOTES);
         }
 
-        $message = __('Someone has requested a password reset for the following account:') . "\r\n\r\n";
-        $message .= sprintf(__('Site Name: %s'), $site_name) . "\r\n\r\n";
-        $message .= sprintf(__('Username: %s'), $user_login) . "\r\n\r\n";
-        $message .= __('If this was a mistake, just ignore this email and nothing will happen.') . "\r\n\r\n";
-        $message .= __('To reset your password, visit the following address:') . "\r\n\r\n";
+        $message = __('Someone has requested a password reset for the following account:', 'mstore-api') . "\r\n\r\n";
+        $message .= sprintf(
+            /* translators: %s: site name. */
+            __('Site Name: %s', 'mstore-api'),
+            $site_name
+        ) . "\r\n\r\n";
+        $message .= sprintf(
+            /* translators: %s: user login. */
+            __('Username: %s', 'mstore-api'),
+            $user_login
+        ) . "\r\n\r\n";
+        $message .= __('If this was a mistake, just ignore this email and nothing will happen.', 'mstore-api') . "\r\n\r\n";
+        $message .= __('To reset your password, visit the following address:', 'mstore-api') . "\r\n\r\n";
         $message .= network_site_url("wp-login.php?action=rp&key=$key&login=" . rawurlencode($user_login), 'login') . "\r\n";
-        $title = sprintf(__('[%s] Password Reset'), $site_name);
+        $title = sprintf(
+            /* translators: %s: site name. */
+            __('[%s] Password Reset', 'mstore-api'),
+            $site_name
+        );
         $title = apply_filters('retrieve_password_title', $title, $user_login, $user_data);
         $message = apply_filters('retrieve_password_message', $message, $key, $user_login, $user_data);
 
@@ -1601,7 +1629,7 @@ class FlutterUserController extends FlutterBaseController
         global $wpdb;
         $table_name = $wpdb->prefix . "mstore_checkout";
 
-        $code = md5(mt_rand() . strtotime("now"));
+        $code = md5(wp_rand() . strtotime("now"));
         $success = $wpdb->insert(
             $table_name,
             array(

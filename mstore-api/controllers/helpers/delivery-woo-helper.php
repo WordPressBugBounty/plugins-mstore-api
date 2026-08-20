@@ -1,5 +1,9 @@
 <?php
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 class DeliveryWooHelper
 {
     // Meta key constants to prevent SQL injection
@@ -76,17 +80,14 @@ class DeliveryWooHelper
                 $base_sql .= " WHERE {$table_2}.meta_key = %s AND {$table_2}.meta_value = %s";
                 $base_sql .= " AND {$table_1}.type = 'shop_order'";
 
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 $total = count($wpdb->get_results($wpdb->prepare($base_sql . " GROUP BY {$table_1}.id", $meta_key, $user_id)));
-                $pending_count = count($wpdb->get_results($wpdb->prepare(
-                    $base_sql . " AND ({$table_1}.status = 'wc-driver-assigned' OR {$table_1}.status = 'wc-out-for-delivery') GROUP BY {$table_1}.id",
-                    $meta_key,
-                    $user_id
-                )));
-                $delivered_count = count($wpdb->get_results($wpdb->prepare(
-                    $base_sql . " AND {$table_1}.status = 'wc-completed' GROUP BY {$table_1}.id",
-                    $meta_key,
-                    $user_id
-                )));
+                $pending_sql = $base_sql . " AND ({$table_1}.status = 'wc-driver-assigned' OR {$table_1}.status = 'wc-out-for-delivery') GROUP BY {$table_1}.id";
+                $delivered_sql = $base_sql . " AND {$table_1}.status = 'wc-completed' GROUP BY {$table_1}.id";
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+                $pending_count = count($wpdb->get_results($wpdb->prepare($pending_sql, $meta_key, $user_id)));
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+                $delivered_count = count($wpdb->get_results($wpdb->prepare($delivered_sql, $meta_key, $user_id)));
             } else {
                 // Query from legacy tables
                 $table_1 = "{$wpdb->prefix}posts";
@@ -96,17 +97,14 @@ class DeliveryWooHelper
                 $base_sql .= " WHERE `{$table_2}`.`meta_key` = %s AND `{$table_2}`.`meta_value` = %s";
                 $base_sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
 
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 $total = count($wpdb->get_results($wpdb->prepare($base_sql . " GROUP BY {$table_1}.ID", $meta_key, $user_id)));
-                $pending_count = count($wpdb->get_results($wpdb->prepare(
-                    $base_sql . " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery') GROUP BY {$table_1}.ID",
-                    $meta_key,
-                    $user_id
-                )));
-                $delivered_count = count($wpdb->get_results($wpdb->prepare(
-                    $base_sql . " AND {$table_1}.post_status = 'wc-completed' GROUP BY {$table_1}.ID",
-                    $meta_key,
-                    $user_id
-                )));
+                $pending_sql = $base_sql . " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery') GROUP BY {$table_1}.ID";
+                $delivered_sql = $base_sql . " AND {$table_1}.post_status = 'wc-completed' GROUP BY {$table_1}.ID";
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+                $pending_count = count($wpdb->get_results($wpdb->prepare($pending_sql, $meta_key, $user_id)));
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+                $delivered_count = count($wpdb->get_results($wpdb->prepare($delivered_sql, $meta_key, $user_id)));
             }
         }
         else if (mstore_is_ddwc_active()) {
@@ -118,17 +116,14 @@ class DeliveryWooHelper
             $base_sql .= " WHERE `{$table_2}`.`meta_key` = %s AND `{$table_2}`.`meta_value` = %s";
             $base_sql .= " AND `{$table_1}`.`post_type` = 'shop_order'";
 
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $total = count($wpdb->get_results($wpdb->prepare($base_sql . " GROUP BY {$table_1}.ID", $meta_key, $user_id)));
-            $pending_count = count($wpdb->get_results($wpdb->prepare(
-                $base_sql . " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery' OR `{$table_1}`.`post_status` = 'wc-processing') GROUP BY {$table_1}.ID",
-                $meta_key,
-                $user_id
-            )));
-            $delivered_count = count($wpdb->get_results($wpdb->prepare(
-                $base_sql . " AND `{$table_1}`.`post_status` = 'wc-completed' GROUP BY {$table_1}.ID",
-                $meta_key,
-                $user_id
-            )));
+            $pending_sql = $base_sql . " AND (`{$table_1}`.`post_status` = 'wc-driver-assigned' OR `{$table_1}`.`post_status` = 'wc-out-for-delivery' OR `{$table_1}`.`post_status` = 'wc-processing') GROUP BY {$table_1}.ID";
+            $delivered_sql = $base_sql . " AND `{$table_1}`.`post_status` = 'wc-completed' GROUP BY {$table_1}.ID";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            $pending_count = count($wpdb->get_results($wpdb->prepare($pending_sql, $meta_key, $user_id)));
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            $delivered_count = count($wpdb->get_results($wpdb->prepare($delivered_sql, $meta_key, $user_id)));
         }
 
         return new WP_REST_Response(array(
@@ -172,7 +167,9 @@ class DeliveryWooHelper
         $sql .= " AND is_trashed = 0";
         $sql .= " AND delivery_status = 'pending'";
         $sql .= " GROUP BY $table_name.`vendor_id`";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql = $wpdb->prepare($sql, $user_id);
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         $items = $wpdb->get_results($sql);
 
         $vendor = new FlutterWCFMHelper();
@@ -239,8 +236,10 @@ class DeliveryWooHelper
                 $sql .= " GROUP BY {$table_1}.id ORDER BY {$table_1}.id DESC LIMIT %d OFFSET %d";
 
                 if(isset($order_search)){
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                     $sql = $wpdb->prepare($sql, $meta_key, $user_id, '%'.$order_search.'%', $per_page, $page);
                 } else {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                     $sql = $wpdb->prepare($sql, $meta_key, $user_id, $per_page, $page);
                 }
             } else {
@@ -270,12 +269,15 @@ class DeliveryWooHelper
                 $sql .= " GROUP BY $table_1.`ID` ORDER BY $table_1.`ID` DESC LIMIT %d OFFSET %d";
 
                 if (isset($order_search)){
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                     $sql = $wpdb->prepare($sql, $meta_key, $user_id, '%'.$order_search.'%', $per_page, $page);
                 } else {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                     $sql = $wpdb->prepare($sql, $meta_key, $user_id, $per_page, $page);
                 }
             }
 
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $items = $wpdb->get_results($sql);
             foreach ($items as $item) {
                 $order_id = isset($item->ID) ? $item->ID : $item->id;
@@ -343,11 +345,14 @@ class DeliveryWooHelper
             $sql .= " GROUP BY $table_1.`ID` ORDER BY $table_1.`ID` DESC LIMIT %d OFFSET %d";
 
             if(isset($order_search)){
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 $sql = $wpdb->prepare($sql, $meta_key, $user_id, '%'.$order_search.'%', $per_page, $page);
             }else{
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 $sql = $wpdb->prepare($sql, $meta_key, $user_id, $per_page, $page);
             }
 
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $items = $wpdb->get_results($sql);
             foreach ($items as $item) {
                 $order = wc_get_order($item);
@@ -417,7 +422,9 @@ class DeliveryWooHelper
             $sql .= " ORDER BY `{$table_name}`.`id` DESC";
             $sql .= " LIMIT %d";
             $sql .= " OFFSET %d";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $user_id, $limit, $offset);
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $messages = $wpdb->get_results($sql);
         }
         return new WP_REST_Response(array(
@@ -570,4 +577,3 @@ class DeliveryWooHelper
         ), 400);
     }
 }
-

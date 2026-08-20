@@ -2,8 +2,8 @@
 Contributors:      inspireui
 Tags:              flutter, app builder, app creator, mobile app builder, woocommerce app
 Requires at least: 4.4
-Stable tag:        4.21.2
-Tested up to:      7.0
+Stable tag:        4.21.3
+Tested up to:      7.1
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -48,11 +48,15 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 1. Click Install.
 
 == Changelog ==
+= 4.21.3 =
+  * Maintenance: Fix plugin-check errors and improve WordPress.org plugin compliance
+
 = 4.21.2 =
   * Security: Require authentication and ownership on the loyalty points endpoints (flutter_user/get_points, flutter_osp/points)
   * Security: Throttle the public check-user endpoint to prevent account enumeration
 
 = 4.21.1 =
+  * Support Jetpack account protection checks during user registration and password updates
   * Security: Prevent delivery and wallet order-completion bypasses and harden the icon include
   * Restrict customer order cancellation to pending or failed orders
   * Improve compatibility for legacy order status updates

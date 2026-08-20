@@ -1,4 +1,9 @@
 <?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 require_once(__DIR__ . '/flutter-base.php');
 
 use Firebase\JWT\JWT;
@@ -13,6 +18,19 @@ use Firebase\JWT\Key;
 
 class Flutter2C2P extends FlutterBaseController
 {
+    private function post_json($url, $payload) {
+        return wp_remote_post(
+            $url,
+            array(
+                'timeout' => 15,
+                'headers' => array(
+                    'Content-Type' => 'application/json',
+                ),
+                'body' => wp_json_encode($payload),
+            )
+        );
+    }
+
     /**
      * Endpoint namespace
      *
@@ -141,29 +159,12 @@ class Flutter2C2P extends FlutterBaseController
             'payload' => $jwt,
         );
 
-        $curl = curl_init();
+        $response = $this->post_json($url, $requestData);
+        if ( is_wp_error( $response ) ) {
+            return parent::sendError('network_error', $response->get_error_message(), 400);
+        }
 
-        curl_setopt_array($curl, array(
-        CURLOPT_URL => $url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_POSTFIELDS =>json_encode($requestData),
-        CURLOPT_HTTPHEADER => array(
-            'Content-Type: application/json'
-        ),
-        ));
-
-        $response = curl_exec($curl);
-
-        curl_close($curl);
-
-        // Decode the JSON response
-        $data = json_decode($response, true);
+        $data = json_decode(wp_remote_retrieve_body($response), true);
 
         if(isset($data['payload'])){
             return JWT::decode($data['payload'], new Key($secret_key, 'HS256'));

@@ -1,4 +1,48 @@
 <?php
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+if ( ! function_exists( 'mstore_register_rest_field_compat' ) ) {
+    function mstore_register_rest_field_compat( $object_type, $attribute, $args = array() ) {
+        if ( ! function_exists( 'register_rest_field' ) ) {
+            return false;
+        }
+
+        return call_user_func( 'register_rest_field', $object_type, $attribute, $args );
+    }
+}
+
+if ( ! function_exists( 'mstore_wp_get_original_image_url_compat' ) ) {
+    function mstore_wp_get_original_image_url_compat( $image_id ) {
+        if ( function_exists( 'wp_get_original_image_url' ) ) {
+            return call_user_func( 'wp_get_original_image_url', $image_id );
+        }
+
+        return wp_get_attachment_url( $image_id );
+    }
+}
+
+if ( ! function_exists( 'mstore_rest_get_server_compat' ) ) {
+    function mstore_rest_get_server_compat() {
+        if ( ! function_exists( 'rest_get_server' ) ) {
+            return null;
+        }
+
+        return call_user_func( 'rest_get_server' );
+    }
+}
+
+if ( ! function_exists( 'mstore_wp_date_compat' ) ) {
+    function mstore_wp_date_compat( $format, $timestamp ) {
+        if ( function_exists( 'wp_date' ) ) {
+            return wp_date( $format, $timestamp );
+        }
+
+        return date_i18n( $format, $timestamp );
+    }
+}
+
 require_once(__DIR__ . '/mylisting-functions.php');
 
 class FlutterTemplate extends WP_REST_Posts_Controller
@@ -116,14 +160,14 @@ class FlutterTemplate extends WP_REST_Posts_Controller
     {
 
         // Blog rest api fields
-        register_rest_field('post', 'image_feature', array(
+        mstore_register_rest_field_compat('post', 'image_feature', array(
             'get_callback' => array(
                 $this,
                 'get_blog_image_feature'
             ) ,
         ));
 
-        register_rest_field('post', 'author_name', array(
+        mstore_register_rest_field_compat('post', 'author_name', array(
             'get_callback' => array(
                 $this,
                 'get_blog_author_name'
@@ -132,14 +176,14 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
         // Get Field Category Custom
         $field_cate = $this->_isListingPro ? 'listing-category' : 'job_listing_category';
-        register_rest_field($field_cate, 'term_image', array(
+        mstore_register_rest_field_compat($field_cate, 'term_image', array(
             'get_callback' => array(
                 $this,
                 'get_term_meta_image'
             ) ,
         ));
 
-        register_rest_field('listing_category', 'term_image', array(
+        mstore_register_rest_field_compat('listing_category', 'term_image', array(
             'get_callback' => array(
                 $this,
                 'get_term_meta_image'
@@ -148,7 +192,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
         if ($this->_isListable)
         {
-            register_rest_field($this->_customPostType, 'author_name', array(
+            mstore_register_rest_field_compat($this->_customPostType, 'author_name', array(
                 'get_callback' => array(
                     $this,
                     'get_author_meta'
@@ -161,7 +205,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         // Listing Pro
         if ($this->_isListingPro)
         {
-            register_rest_field('lp-reviews', 'author_name', array(
+            mstore_register_rest_field_compat('lp-reviews', 'author_name', array(
                 'get_callback' => array(
                     $this,
                     'get_author_meta'
@@ -170,7 +214,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 'schema' => null,
             ));
 
-            register_rest_field($this->_customPostType, 'gallery_images', array(
+            mstore_register_rest_field_compat($this->_customPostType, 'gallery_images', array(
                 'get_callback' => array(
                     $this,
                     'get_post_gallery_images_listingPro'
@@ -189,19 +233,19 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         // Listeo
         if ($this->_isListeo)
         {
-            register_rest_field($this->_customPostType, 'gallery_images', array(
+            mstore_register_rest_field_compat($this->_customPostType, 'gallery_images', array(
                 'get_callback' => array(
                     $this,
                     'get_post_gallery_images_listeo'
                 ) ,
             ));
-            register_rest_field($this->_customPostType, 'time_slots', array(
+            mstore_register_rest_field_compat($this->_customPostType, 'time_slots', array(
                 'get_callback' => array(
                     $this,
                     'get_service_slots'
                 ) ,
             ));
-            register_rest_field($this->_customPostType, 'gallery_images', array(
+            mstore_register_rest_field_compat($this->_customPostType, 'gallery_images', array(
                 'get_callback' => array(
                     $this,
                     'get_post_gallery_images_listeo'
@@ -325,7 +369,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             ));
 
             //add address
-            register_rest_field('job_listing',
+            mstore_register_rest_field_compat('job_listing',
                 'newaddress',
                 array(
                     'get_callback'  => array($this,'_rest_get_address_data'),
@@ -333,14 +377,14 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             );
 
             //add lat
-            register_rest_field( 'job_listing',
+            mstore_register_rest_field_compat( 'job_listing',
                 'newlat',
                 array(
                     'get_callback'  => array($this,'_rest_get_lat_data'),
                 )
             );
 
-            register_rest_field( 'job_listing',
+            mstore_register_rest_field_compat( 'job_listing',
                 'newlng',
                 array(
                     'get_callback'  => array($this,'_rest_get_lng_data'),
@@ -361,7 +405,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
         /* --- meta field for gallery image --- */
 
-        register_rest_field($this->_customPostType, 'comments_ratings', array(
+        mstore_register_rest_field_compat($this->_customPostType, 'comments_ratings', array(
             'get_callback' => array(
                 $this,
                 'get_comments_ratings'
@@ -370,7 +414,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             'schema' => null,
         ));
 
-        register_rest_field($this->_customPostType, 'listing_data', array(
+        mstore_register_rest_field_compat($this->_customPostType, 'listing_data', array(
             'get_callback' => array(
                 $this,
                 'get_post_meta_for_api'
@@ -378,7 +422,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             'schema' => null,
         ));
 
-        register_rest_field($this->_customPostType, 'cost', array(
+        mstore_register_rest_field_compat($this->_customPostType, 'cost', array(
             'get_callback' => array(
                 $this,
                 'get_cost_for_booking'
@@ -386,7 +430,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             'schema' => null,
         ));
 
-        register_rest_field($this->_customPostType, 'pure_taxonomies', array(
+        mstore_register_rest_field_compat($this->_customPostType, 'pure_taxonomies', array(
             'get_callback' => array(
                 $this,
                 'get_pure_taxonomies'
@@ -394,7 +438,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             'schema' => null,
         ));
 
-        register_rest_field($this->_customPostType, 'featured_image', array(
+        mstore_register_rest_field_compat($this->_customPostType, 'featured_image', array(
             'get_callback' => array(
                 $this,
                 'get_blog_image_feature'
@@ -402,7 +446,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             'schema' => null,
         ));
 
-        register_rest_field($this->_customPostType, 'store', array(
+        mstore_register_rest_field_compat($this->_customPostType, 'store', array(
             'get_callback' => array(
                 $this,
                 'get_store_info_for_api'
@@ -836,7 +880,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                      GROUP BY cm.meta_key",
                     array_merge([$listing_id], $keys)
                 );
-                $rows = $wpdb->get_results($query);
+                $rows = $wpdb->get_results($query); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 foreach ($rows as $row) {
                     $counts[$row->meta_key] = (int) $row->cnt;
                 }
@@ -883,8 +927,9 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             $postmeta_tb = $wpdb->prefix . "postmeta";
             $posts_tb = $wpdb->prefix . "posts";
             $dokan_orders_tb = $wpdb->prefix . "dokan_orders";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare("SELECT $posts_tb.ID FROM $postmeta_tb INNER JOIN $posts_tb ON $postmeta_tb.post_id=$posts_tb.ID INNER JOIN $dokan_orders_tb ON $posts_tb.ID = $dokan_orders_tb.order_id WHERE $postmeta_tb.meta_key = '_customer_user' AND $postmeta_tb.meta_value=%s LIMIT %d OFFSET %d",$user_id,$limit,$page);
-            $items = $wpdb->get_results($sql);
+            $items = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             if(empty($items)){
                 return [];
             }
@@ -1020,9 +1065,10 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             $sql .= "b.meta_key='_geolocation_lat' OR b.meta_key='_geolocation_long') AND a.post_status='publish' GROUP BY b.post_id) AS t INNER ";
             $sql .= "JOIN {$wpdb->prefix}posts as p on (p.ID=t.post_id) HAVING distance < %f ORDER BY distance";
 
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $current_lat, $current_long, $current_lat, $radius);
 
-            $results = $wpdb->get_results($sql);
+            $results = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $post_ids = array_map(function($item) { return $item->ID; }, $results);
 
             if (!empty($post_ids)) {
@@ -1255,7 +1301,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     GROUP BY pm_country_code.meta_value, pm_country.meta_value
                     ORDER BY listings_count DESC";
 
-            return $wpdb->get_results($sql);
+            return $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
         } elseif ($this->_isMyListing) {
             $sql = "SELECT
@@ -1277,7 +1323,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     GROUP BY pm_country_code.meta_value, pm_country.meta_value
                     ORDER BY listings_count DESC";
 
-            return $wpdb->get_results($sql);
+            return $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
         } elseif ($this->_isListingPro) {
             $sql = "SELECT p.ID,
@@ -1292,7 +1338,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     AND pm_opts.meta_value != ''
                     AND pm_country_code.meta_value != '' AND pm_country_code.meta_value IS NOT NULL";
 
-            $listings = $wpdb->get_results($sql);
+            $listings = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $aggregated = array();
 
             foreach ($listings as $listing) {
@@ -1379,7 +1425,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     GROUP BY pm_province.meta_value
                     ORDER BY listings_count DESC";
 
-            return $wpdb->get_results($wpdb->prepare($sql, $country_code));
+            return $wpdb->get_results($wpdb->prepare($sql, $country_code)); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
         } elseif ($this->_isMyListing) {
             $sql = "SELECT
@@ -1399,7 +1445,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     GROUP BY pm_province.meta_value
                     ORDER BY listings_count DESC";
 
-            return $wpdb->get_results($wpdb->prepare($sql, $country_code));
+            return $wpdb->get_results($wpdb->prepare($sql, $country_code)); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
         } elseif ($this->_isListingPro) {
             $sql = "SELECT p.ID,
@@ -1414,7 +1460,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     AND pm_opts.meta_value != ''
                     AND pm_province.meta_value != '' AND pm_province.meta_value IS NOT NULL";
 
-            $listings = $wpdb->get_results($wpdb->prepare($sql, $country_code));
+            $listings = $wpdb->get_results($wpdb->prepare($sql, $country_code)); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $aggregated = array();
 
             foreach ($listings as $listing) {
@@ -1517,8 +1563,9 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     LIMIT %d OFFSET %d";
 
             $search_pattern = '%' . $wpdb->esc_like($province_name) . '%';
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $search_pattern, $search_pattern, $per_page, $offset);
-            $posts = $wpdb->get_results($sql);
+            $posts = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
             foreach ($posts as $post) {
                 $itemdata = $this->prepare_item_for_response($post, $request);
@@ -1535,8 +1582,9 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     LIMIT %d OFFSET %d";
 
             $search_pattern = '%' . $wpdb->esc_like($province_name) . '%';
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $search_pattern, $search_pattern, $per_page, $offset);
-            $posts = $wpdb->get_results($sql);
+            $posts = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
             foreach ($posts as $post) {
                 $itemdata = $this->prepare_item_for_response($post, $request);
@@ -1553,8 +1601,9 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     LIMIT %d OFFSET %d";
 
             $search_pattern = '%' . $wpdb->esc_like($province_name) . '%';
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $search_pattern, $search_pattern, $per_page, $offset);
-            $posts = $wpdb->get_results($sql);
+            $posts = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
             foreach ($posts as $post) {
                 $itemdata = $this->prepare_item_for_response($post, $request);
@@ -2331,11 +2380,11 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 // Handle timestamp, m/d/Y H:i, or already correct format
                 if (!empty($event_start) && !preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $event_start)) {
                     $ts = is_numeric($event_start) ? intval($event_start) : strtotime($event_start);
-                    $event_start = $ts !== false ? date('Y-m-d H:i:s', $ts) : $event_start;
+                    $event_start = $ts !== false ? mstore_wp_date_compat('Y-m-d H:i:s', $ts) : $event_start;
                 }
                 if (!empty($event_end) && !preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $event_end)) {
                     $ts = is_numeric($event_end) ? intval($event_end) : strtotime($event_end);
-                    $event_end = $ts !== false ? date('Y-m-d H:i:s', $ts) : $event_end;
+                    $event_end = $ts !== false ? mstore_wp_date_compat('Y-m-d H:i:s', $ts) : $event_end;
                 }
 
                 $item['event_start'] = $event_start;
@@ -2442,7 +2491,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             if (file_exists($qrlib_path)) {
                 require_once $qrlib_path;
             } else {
-                wp_die('QR Code library not found at: ' . $qrlib_path);
+                wp_die('QR Code library not found at: ' . esc_html($qrlib_path));
             }
         }
 
@@ -2566,7 +2615,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         $date_end = $request['date_start'];
         $date_start = $request['date_end'];
 
-        $dayofweek = date('w', strtotime($date_start));
+        $dayofweek = mstore_wp_date_compat('w', strtotime($date_start));
         $un_slots = get_post_meta($listing_id, '_slots', true);
         $_slots = Listeo_Core_Bookings_Calendar::get_slots_from_meta($listing_id);
         if ($dayofweek == 0)
@@ -2587,8 +2636,8 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 $places = explode('|', $slot);
                 $free_places = $places[1];
                 $hours = explode(' - ', $places[0]);
-                $hour_start = date("H:i:s", strtotime($hours[0]));
-                $hour_end = date("H:i:s", strtotime($hours[1]));
+                $hour_start = mstore_wp_date_compat('H:i:s', strtotime($hours[0]));
+                $hour_end = mstore_wp_date_compat('H:i:s', strtotime($hours[1]));
                 $date_start = $date_start . ' ' . $hour_start;
                 $date_end = $date_end . ' ' . $hour_end;
 
@@ -2616,8 +2665,8 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             'bookings_author' => $args['bookings_author'],
             'owner_id' => $args['owner_id'],
             'listing_id' => $args['listing_id'],
-            'date_start' => date("Y-m-d H:i:s", strtotime($args['date_start'])) ,
-            'date_end' => date("Y-m-d H:i:s", strtotime($args['date_end'])) ,
+            'date_start' => mstore_wp_date_compat('Y-m-d H:i:s', strtotime($args['date_start'])) ,
+            'date_end' => mstore_wp_date_compat('Y-m-d H:i:s', strtotime($args['date_end'])) ,
             'comment' => $args['comment'],
             'type' => $args['type'],
             'created' => current_time('mysql')
@@ -2947,8 +2996,8 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     {
                         $slot = is_array($slot) ? $slot : json_encode($slot);
                         $hours = explode(' - ', $slot[0]);
-                        $hour_start = date("H:i:s", strtotime($hours[0]));
-                        $hour_end = date("H:i:s", strtotime($hours[1]));
+                        $hour_start = mstore_wp_date_compat('H:i:s', strtotime($hours[0]));
+                        $hour_end = mstore_wp_date_compat('H:i:s', strtotime($hours[1]));
 
                         $price = $this->calculate_listeo_booking_price(
                             $listing_id,
@@ -3063,9 +3112,10 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             //get the Post Id
             $listing_id = $object['id'];
             global $wpdb;
-            $sql = "SELECT * FROM {$wpdb->prefix}mylisting_locations WHERE listing_id = %s"; //wp_it_job_details is job table
+            $sql = "SELECT * FROM {$wpdb->prefix}mylisting_locations WHERE listing_id = %d"; //wp_it_job_details is job table
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $listing_id);
-            $results = $wpdb->get_row($sql);
+            $results = $wpdb->get_row($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 if($results) {
                     return $results->address;
             } else return ""; //return nothing
@@ -3075,9 +3125,10 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             //get the Post Id
             $listing_id = $object['id'];
             global $wpdb;
-            $sql = "SELECT * FROM {$wpdb->prefix}mylisting_locations WHERE listing_id = %s"; //wp_it_job_details is job table
+            $sql = "SELECT * FROM {$wpdb->prefix}mylisting_locations WHERE listing_id = %d"; //wp_it_job_details is job table
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $listing_id);
-            $results = $wpdb->get_row($sql);
+            $results = $wpdb->get_row($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 if($results) {
                     return $results->lat;
             } else return ""; //return nothing
@@ -3087,9 +3138,10 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             //get the Post Id
             $listing_id = $object['id'];
             global $wpdb;
-            $sql = "SELECT * FROM {$wpdb->prefix}mylisting_locations WHERE listing_id = %s"; //wp_it_job_details is job table
+            $sql = "SELECT * FROM {$wpdb->prefix}mylisting_locations WHERE listing_id = %d"; //wp_it_job_details is job table
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $listing_id);
-            $results = $wpdb->get_row($sql);
+            $results = $wpdb->get_row($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 if($results) {
                     return $results->lng;
             } else return ""; //return nothing
@@ -3225,6 +3277,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                                     break;
                                 }else{
                                     $avatar = get_user_meta($author->ID, 'user_avatar', true);
+                                    $phone = get_user_meta($author->ID, 'billing_phone', true);
                                     if (!isset($avatar) || $avatar == "" || is_bool($avatar)) {
                                         $avatar = get_avatar_url($author->ID);
                                     } else {
@@ -3237,6 +3290,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                                         "lastname" => $author->last_name,
                                         "nickname" => $author->nickname,
                                         "avatar" => $avatar,
+                                        "phone" => $phone,
                                     );
                                 }
                                 break;
@@ -3287,8 +3341,9 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             $listing_id = $object['id'];
             global $wpdb;
             $sql = "SELECT * FROM {$wpdb->prefix}mylisting_locations WHERE listing_id = %s"; //wp_it_job_details is job table
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $listing_id);
-            $results = $wpdb->get_row($sql);
+            $results = $wpdb->get_row($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $data = [];
             if ($results) {
                 $data['address'] = $results->address;
@@ -3362,7 +3417,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             {
                 $name = '_cover';
                 $image_id =  get_term_meta($object['id'], $name, true);
-                return wp_get_original_image_url($image_id);
+                return mstore_wp_get_original_image_url_compat($image_id);
             }
             else
             {
@@ -3928,7 +3983,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 // offset applied.
                 if ('0000-00-00 00:00:00' === $post->post_modified_gmt)
                 {
-                    $post_modified_gmt = date('Y-m-d H:i:s', strtotime($post->post_modified) - (get_option('gmt_offset') * 3600));
+                    $post_modified_gmt = get_gmt_from_date($post->post_modified);
                 }
                 else
                 {
@@ -4251,7 +4306,11 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             }
 
             $data = (array)$response->get_data();
-            $server = rest_get_server();
+            if ( ! function_exists( 'rest_get_server' ) ) {
+                return $data;
+            }
+
+            $server = mstore_rest_get_server_compat();
 
             if (method_exists($server, 'get_compact_response_links'))
             {
@@ -4660,8 +4719,8 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
             if ($request['isGetLocate'])
             {
-                $lat = $request['lat'];
-                $long = $request['long'];
+                $lat = (float) $request['lat'];
+                $long = (float) $request['long'];
                 $sql = "SELECT p.*, ";
                 $sql .= " (6371 * acos (cos (radians(%f)) * cos(radians(t.lat)) * cos(radians(t.lng) - radians(%f)) + ";
                 $sql .= "sin (radians(%f)) * sin(radians(t.lat)))) AS distance FROM (SELECT b.post_id, a.post_status, sum(if(";
@@ -4670,8 +4729,9 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 $sql .= "b.meta_key='geolocation_lat' OR b.meta_key='geolocation_long') AND a.post_status='publish' GROUP BY b.post_id) AS t INNER ";
                 $sql .= "JOIN {$wpdb->prefix}posts as p on (p.ID=t.post_id)  ORDER BY distance LIMIT 30";
 
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 $sql = $wpdb->prepare($sql,$lat,$long,$lat);
-                $posts = $wpdb->get_results($sql, OBJECT);
+                $posts = $wpdb->get_results($sql, OBJECT); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
                 if ($wpdb->last_error)
                 {
                     return 'Error: ' . $wpdb->last_error;

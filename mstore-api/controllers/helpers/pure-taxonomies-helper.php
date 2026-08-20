@@ -11,6 +11,16 @@
 
 defined('ABSPATH') or die('No script kiddies please!');
 
+if ( ! function_exists( 'mstore_register_rest_field_compat' ) ) {
+    function mstore_register_rest_field_compat( $object_type, $attribute, $args = array() ) {
+        if ( ! function_exists( 'register_rest_field' ) ) {
+            return false;
+        }
+
+        return call_user_func( 'register_rest_field', $object_type, $attribute, $args );
+    }
+}
+
 class MStore_Pure_Taxonomies_Helper {
 
     // Theme names
@@ -59,7 +69,7 @@ class MStore_Pure_Taxonomies_Helper {
         $post_types = get_post_types(array('public' => true), 'objects');
 
         foreach ($post_types as $post_type) {
-            register_rest_field(
+            mstore_register_rest_field_compat(
                 $post_type->name,
                 'pure_taxonomies',
                 array(

@@ -1,4 +1,8 @@
 <?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
 if ( ! function_exists( 'mstore_api_get_dokan_split_payment_breakdown' ) ) {
     /**
      * Calculate Dokan vendor earning and commission for a WooCommerce order.

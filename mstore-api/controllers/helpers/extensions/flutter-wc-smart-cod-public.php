@@ -62,14 +62,23 @@ class Flutter_Wc_Smart_Cod_Public extends Wc_Smart_Cod_Public {
             $description = "";
             
             if ( $extra_fee > 0 && ( ! isset( $settings['hide_additional_extrafee_description'] ) || $settings['hide_additional_extrafee_description'] !== 'yes' )) {
-                $description .= sprintf( __( '<strong>Cash on delivery fee of %s</strong> has been added to order total amount', 'wc-smart-cod' ), strip_tags( wc_price( $extra_fee ) ) );
+                $description .= sprintf(
+                    /* translators: %s: cash on delivery fee amount. */
+                    __( '<strong>Cash on delivery fee of %s</strong> has been added to order total amount', 'mstore-api' ),
+                    wp_strip_all_tags( wc_price( $extra_fee ) )
+                );
             }
 
             if ( ! isset( $settings['hide_additional_rf_description'] ) || $settings['hide_additional_rf_description'] !== 'yes' ) {
                 if (!empty($description)) {
                     $description .= '<br /> <br />';
                 }
-				$description .= sprintf( __( '<strong>Pay %s online</strong> and %s with cash on delivery', 'wc-smart-cod' ), strip_tags( wc_price( $user_advance_amount ) ), strip_tags( wc_price( $remaining_amount ) ) );
+					$description .= sprintf(
+                        /* translators: 1: online payment amount, 2: cash on delivery amount. */
+                        __( '<strong>Pay %1$s online</strong> and %2$s with cash on delivery', 'mstore-api' ),
+                        wp_strip_all_tags( wc_price( $user_advance_amount ) ),
+                        wp_strip_all_tags( wc_price( $remaining_amount ) )
+                    );
 			}
 
             return ['description' => $description, 'disallowed_payment_gateways' => $rule['disallowed_payment_gateways'], 'real_total' => $total + $extra_fee, 'remaining_amount'=>$remaining_amount, 'user_advance_amount' => $user_advance_amount];
@@ -97,7 +106,7 @@ class Flutter_Wc_Smart_Cod_Public extends Wc_Smart_Cod_Public {
 		if ( $multivendor::has_dokan() ) {
 			$subcarts = $multivendor::break_cart_by_vendors( $cart, $fees, $settings );
 			foreach ( $subcarts as $vendor_id => $vendor_data ) {
-				$name        = apply_filters( 'wc_smart_cod_fee_title', __( 'Cash on delivery', 'woocommerce' ) );
+					$name        = apply_filters( 'wc_smart_cod_fee_title', __( 'Cash on delivery', 'mstore-api' ) );
 				$vendor_name = $vendor_data['vendor_name'];
 				$name       .= " - $vendor_name";
 
@@ -114,7 +123,7 @@ class Flutter_Wc_Smart_Cod_Public extends Wc_Smart_Cod_Public {
 		if ( empty( $fees ) ) {
 			$fees[] = array(
 				'amount' => $this->calculate_smartcod_fees(),
-				'name'   => apply_filters( 'wc_smart_cod_fee_title', __( 'Cash on delivery', 'woocommerce' ) ),
+					'name'   => apply_filters( 'wc_smart_cod_fee_title', __( 'Cash on delivery', 'mstore-api' ) ),
 				'id'     => 'wsc_extra_fee',
 			);
 		}

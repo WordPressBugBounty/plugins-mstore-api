@@ -1,5 +1,19 @@
 <?php
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+if ( ! function_exists( 'mstore_wp_date_compat' ) ) {
+    function mstore_wp_date_compat( $format, $timestamp ) {
+        if ( function_exists( 'wp_date' ) ) {
+            return wp_date( $format, $timestamp );
+        }
+
+        return date_i18n( $format, $timestamp );
+    }
+}
+
 class VendorAdminDokanHelper
 {
     public function sendError($code, $message, $statusCode)
@@ -227,11 +241,14 @@ class VendorAdminDokanHelper
         $sql .= " ORDER BY `ID` DESC LIMIT %d OFFSET %d";
 
         if (isset($search)) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $search, $search, $search, $limit, $page);
         } else {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $limit, $page);
         }
 
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         $item = $wpdb->get_results($sql);
 
         $products_arr = array();
@@ -368,7 +385,9 @@ class VendorAdminDokanHelper
             }
             $args[] = $per_page;
             $args[] = $page;
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $args);
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $items = $wpdb->get_results($sql);
 
             foreach ($items as $item) {
@@ -402,36 +421,36 @@ class VendorAdminDokanHelper
         $query_args = array_replace([], $args);
         switch ($interval) {
             case 'last_month':
-                $query_args['date']['from'] = date('Y-m-d', strtotime('-1 month', strtotime(date('Y-m-1'))));
-                $query_args['date']['to']   = date('Y-m-d', strtotime(date('Y-m-1')));
+                $query_args['date']['from'] = mstore_wp_date_compat('Y-m-d', strtotime('-1 month', strtotime(mstore_wp_date_compat('Y-m-1', current_time('timestamp', 0)))));
+                $query_args['date']['to']   = mstore_wp_date_compat('Y-m-d', strtotime(mstore_wp_date_compat('Y-m-1', current_time('timestamp', 0))));
                 return $query_args;
             case 'month':
-                $query_args['date']['from'] = date('Y-m-d', strtotime(date('Y-m-1')));
-                $query_args['date']['to']   = date('Y-m-d', strtotime('+1 month', strtotime(date('Y-m-1'))));
+                $query_args['date']['from'] = mstore_wp_date_compat('Y-m-d', strtotime(mstore_wp_date_compat('Y-m-1', current_time('timestamp', 0))));
+                $query_args['date']['to']   = mstore_wp_date_compat('Y-m-d', strtotime('+1 month', strtotime(mstore_wp_date_compat('Y-m-1', current_time('timestamp', 0)))));
                 return $query_args;
             case 'year':
-                $query_args['date']['from'] = date('Y-m-d', strtotime(date('Y-1-1')));
-                $query_args['date']['to']   = date('Y-m-d', strtotime('+1 year', strtotime(date('Y-1-1'))));;
+                $query_args['date']['from'] = mstore_wp_date_compat('Y-m-d', strtotime(mstore_wp_date_compat('Y-1-1', current_time('timestamp', 0))));
+                $query_args['date']['to']   = mstore_wp_date_compat('Y-m-d', strtotime('+1 year', strtotime(mstore_wp_date_compat('Y-1-1', current_time('timestamp', 0)))));
                 return $query_args;
             case 'week_1':
-                $query_args['date']['from'] = date('Y-m-d', strtotime('-1 week', strtotime(date('Y-m-d'))));
-                $query_args['date']['to']   = date('Y-m-d');
+                $query_args['date']['from'] = mstore_wp_date_compat('Y-m-d', strtotime('-1 week', current_time('timestamp', 0)));
+                $query_args['date']['to']   = mstore_wp_date_compat('Y-m-d', current_time('timestamp', 0));
                 return $query_args;
             case 'week_2':
-                $query_args['date']['from'] = date('Y-m-d', strtotime('-2 weeks', strtotime(date('Y-m-d'))));
-                $query_args['date']['to']   = date('Y-m-d', strtotime('-1 weeks', strtotime(date('Y-m-d'))));
+                $query_args['date']['from'] = mstore_wp_date_compat('Y-m-d', strtotime('-2 weeks', current_time('timestamp', 0)));
+                $query_args['date']['to']   = mstore_wp_date_compat('Y-m-d', strtotime('-1 weeks', current_time('timestamp', 0)));
                 return $query_args;
             case 'week_3':
-                $query_args['date']['from'] = date('Y-m-d', strtotime('-3 weeks', strtotime(date('Y-m-d'))));
-                $query_args['date']['to']   = date('Y-m-d', strtotime('-2 weeks', strtotime(date('Y-m-d'))));
+                $query_args['date']['from'] = mstore_wp_date_compat('Y-m-d', strtotime('-3 weeks', current_time('timestamp', 0)));
+                $query_args['date']['to']   = mstore_wp_date_compat('Y-m-d', strtotime('-2 weeks', current_time('timestamp', 0)));
                 return $query_args;
             case 'week_4':
-                $query_args['date']['from'] = date('Y-m-d', strtotime('-4 weeks', strtotime(date('Y-m-d'))));
-                $query_args['date']['to']   = date('Y-m-d', strtotime('-3 weeks', strtotime(date('Y-m-d'))));
+                $query_args['date']['from'] = mstore_wp_date_compat('Y-m-d', strtotime('-4 weeks', current_time('timestamp', 0)));
+                $query_args['date']['to']   = mstore_wp_date_compat('Y-m-d', strtotime('-3 weeks', current_time('timestamp', 0)));
                 return $query_args;
             case 'week_5':
-                $query_args['date']['from'] = date('Y-m-d', strtotime('-5 weeks', strtotime(date('Y-m-d'))));
-                $query_args['date']['to']   = date('Y-m-d', strtotime('-4 weeks', strtotime(date('Y-m-d'))));
+                $query_args['date']['from'] = mstore_wp_date_compat('Y-m-d', strtotime('-5 weeks', current_time('timestamp', 0)));
+                $query_args['date']['to']   = mstore_wp_date_compat('Y-m-d', strtotime('-4 weeks', current_time('timestamp', 0)));
                 return $query_args;
             default:
                 return $query_args;
@@ -627,7 +646,7 @@ class VendorAdminDokanHelper
                 $query = new WP_Query($args);
 
                 if (empty($query->posts)) {
-                    return new WP_Error('no_reviews_found', __('No reviews found', 'dokan-lite'), ['status' => 404]);
+                    return new WP_Error('no_reviews_found', __('No reviews found', 'mstore-api'), ['status' => 404]);
                 }
 
                 $data = [];
@@ -646,7 +665,7 @@ class VendorAdminDokanHelper
                 $comments = $dokan_template_reviews->comment_query($store_id, $post_type, $limit, $status, $paged);
 
                 if (empty($comments)) {
-                    return new WP_Error('no_reviews_found', __('No reviews found', 'dokan-lite'), ['status' => 404]);
+                    return new WP_Error('no_reviews_found', __('No reviews found', 'mstore-api'), ['status' => 404]);
                 }
 
                 $data = [];
@@ -705,12 +724,14 @@ class VendorAdminDokanHelper
             $sql .= " ORDER BY wcfm_messages.`ID` DESC";
             $sql .= " LIMIT %d";
             $sql .= " OFFSET %d";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $message_to, $message_to, $message_to, $limit, $offset);
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $wcfm_messages = $wpdb->get_results($sql);
 
             foreach ($wcfm_messages as $wcfm_message) {
                 unset($wcfm_message->author_id, $wcfm_message->reply_to, $wcfm_message->author_is_admin, $wcfm_message->author_is_vendor, $wcfm_message->author_is_customer, $wcfm_message->is_notice, $wcfm_message->is_direct_message, $wcfm_message->is_pined, $wcfm_message->message_to);
-                $wcfm_message->message = strip_tags($wcfm_message->message);
+                $wcfm_message->message = wp_strip_all_tags($wcfm_message->message);
             }
         }
         return new WP_REST_Response(array(
@@ -1037,8 +1058,8 @@ class VendorAdminDokanHelper
                         $image_arr[] = $image[0];
                     }
                 }
-                $p['description'] = strip_tags($p['description']);
-                $p['short_description'] = strip_tags($p['short_description']);
+                $p['description'] = wp_strip_all_tags($p['description']);
+                $p['short_description'] = wp_strip_all_tags($p['short_description']);
                 $p['images'] = $image_arr;
                 $image = wp_get_attachment_image_src($p['image_id'], 'full');
                 if (!is_null($image[0])) {
@@ -1228,10 +1249,10 @@ class VendorAdminDokanHelper
             // Description
             if (isset($description)) {
 
-                $product->set_description(strip_tags($description));
+                $product->set_description(wp_strip_all_tags($description));
             }
             if (isset($short_description)) {
-                $product->set_short_description(strip_tags($short_description));
+                $product->set_short_description(wp_strip_all_tags($short_description));
             }
 
             // // Stock status.
@@ -1396,8 +1417,8 @@ class VendorAdminDokanHelper
                     $image_arr[] = $image[0];
                 }
             }
-            $p['description'] = strip_tags($p['description']);
-            $p['short_description'] = strip_tags($p['short_description']);
+            $p['description'] = wp_strip_all_tags($p['description']);
+            $p['short_description'] = wp_strip_all_tags($p['short_description']);
             $p['images'] = $image_arr;
             $image = wp_get_attachment_image_src($p['image_id'], 'full');
             if (!is_null($image[0])) {

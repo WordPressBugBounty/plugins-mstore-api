@@ -1,4 +1,8 @@
 <?php
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 require_once(__DIR__ . '/flutter-base.php');
 
 /*
@@ -359,14 +363,15 @@ class FlutterTeraWallet extends FlutterBaseController
 
             wp_set_current_user($user_id);
             if (($order->get_total('edit') > woo_wallet()->wallet->get_wallet_balance(get_current_user_id(), 'edit')) && apply_filters('woo_wallet_disallow_negative_transaction', (woo_wallet()->wallet->get_wallet_balance(get_current_user_id(), 'edit') <= 0 || $order->get_total('edit') > woo_wallet()->wallet->get_wallet_balance(get_current_user_id(), 'edit')), $order->get_total('edit'), woo_wallet()->wallet->get_wallet_balance(get_current_user_id(), 'edit'))) {
-                $error = sprintf(__('Your wallet balance is low. Please add %s to proceed with this transaction.', 'woo-wallet'), $order->get_total('edit') - woo_wallet()->wallet->get_wallet_balance(get_current_user_id(), 'edit'));
+                /* translators: %s: amount the user needs to add to the wallet. */
+                $error = sprintf(__('Your wallet balance is low. Please add %s to proceed with this transaction.', 'mstore-api'), $order->get_total('edit') - woo_wallet()->wallet->get_wallet_balance(get_current_user_id(), 'edit'));
                 return parent::sendError("wallet_error", $error, 400);
             }
 
             $wallet_response = woo_wallet()->wallet->debit(
                 get_current_user_id(),
                 $order->get_total('edit'),
-                apply_filters('woo_wallet_order_payment_description', __('For order payment #', 'woo-wallet') . $order->get_order_number(), $order)
+                apply_filters('woo_wallet_order_payment_description', __('For order payment #', 'mstore-api') . $order->get_order_number(), $order)
             );
 
             if (!$wallet_response) {
@@ -565,7 +570,7 @@ class FlutterTeraWallet extends FlutterBaseController
                 'author' => $user_id,
                 'post_type' => WOO_Wallet_Withdrawal_Post_Type::$post_type,
                 'post_status' => 'ww-pending',
-                'suppress_filters' => true
+                'suppress_filters' => false
             );
             $withdrawal_requests = get_posts($args);
             if($withdrawal_requests){
@@ -581,7 +586,8 @@ class FlutterTeraWallet extends FlutterBaseController
                 }
                 return $results;
             }else if (woo_wallet()->settings_api->get_option('_min_withdrawal_limit', '_wallet_settings_withdrawal', 0) > woo_wallet()->wallet->get_wallet_balance($user_id, 'edit')){
-                return parent::sendError("error_limit", sprintf(__('Minimum withdrawal limit is %s', 'woo-wallet-withdrawal'), wc_price(woo_wallet()->settings_api->get_option('_min_withdrawal_limit', '_wallet_settings_withdrawal', 0))), 400);
+                /* translators: %s: minimum withdrawal limit. */
+                return parent::sendError("error_limit", sprintf(__('Minimum withdrawal limit is %s', 'mstore-api'), wc_price(woo_wallet()->settings_api->get_option('_min_withdrawal_limit', '_wallet_settings_withdrawal', 0))), 400);
             }else {
                 return [];
             }
@@ -604,7 +610,7 @@ class FlutterTeraWallet extends FlutterBaseController
                 'author' => $user_id,
                 'post_type' => WOO_Wallet_Withdrawal_Post_Type::$post_type,
                 'post_status' => 'ww-approved',
-                'suppress_filters' => true
+                'suppress_filters' => false
             );
             $withdrawal_requests = get_posts($args);
             if($withdrawal_requests){
@@ -641,7 +647,7 @@ class FlutterTeraWallet extends FlutterBaseController
                 'author' => $user_id,
                 'post_type' => WOO_Wallet_Withdrawal_Post_Type::$post_type,
                 'post_status' => 'ww-cancelled',
-                'suppress_filters' => true
+                'suppress_filters' => false
             );
             $withdrawal_requests = get_posts($args);
             if($withdrawal_requests){
@@ -672,33 +678,33 @@ class FlutterTeraWallet extends FlutterBaseController
                 'author' => get_current_user_id(),
                 'post_type' => WOO_Wallet_Withdrawal_Post_Type::$post_type,
                 'post_status' => 'ww-pending',
-                'suppress_filters' => true
+                'suppress_filters' => false
             );
             $withdrawal_requests = get_posts($args);
             if(!$wallet_withdrawal_amount){
                 $response = array(
                     'is_valid' => false,
-                    'message' => __('Please enter amount.', 'woo-wallet')
+                    'message' => __('Please enter amount.', 'mstore-api')
                 );
             } else if ($wallet_withdrawal_amount + $transaction_charge > woo_wallet()->wallet->get_wallet_balance(get_current_user_id(), 'edit')) {
                 $response = array(
                     'is_valid' => false,
-                    'message' => __('You don\'t have enough balance for this request.', 'woo-wallet')
+                    'message' => __('You don\'t have enough balance for this request.', 'mstore-api')
                 );
             } else if (empty($wallet_withdrawal_method)) {
                 $response = array(
                     'is_valid' => false,
-                    'message' => __('Invalid payment gateway.', 'woo-wallet')
+                    'message' => __('Invalid payment gateway.', 'mstore-api')
                 );
             } else if($withdrawal_requests){
                 $response = array(
                     'is_valid' => false,
-                    'message' => __('You have a pending withdrawal.', 'woo-wallet')
+                    'message' => __('You have a pending withdrawal.', 'mstore-api')
                 );
             } else {
                 $response = array(
                     'is_valid' => true,
-                    'message' => __('Request submitted successfully.', 'woo-wallet')
+                    'message' => __('Request submitted successfully.', 'mstore-api')
                 );
             }
         return apply_filters('validate_wallet_withdrawal_request', $response);
@@ -712,7 +718,7 @@ class FlutterTeraWallet extends FlutterBaseController
         update_post_meta($withdrawal_id, '_wallet_withdrawal_currency', get_woocommerce_currency());
         update_post_meta($withdrawal_id, '_wallet_withdrawal_transaction_charge', $transaction_charge);
         update_post_meta($withdrawal_id, '_wallet_withdrawal_method', $wallet_withdrawal_method);
-        $withdrawal_transaction_id = woo_wallet()->wallet->debit(get_current_user_id(), ($wallet_withdrawal_amount + $transaction_charge), __('Wallet withdrawal request #', 'woo-wallet-withdrawal') . $withdrawal_id);
+        $withdrawal_transaction_id = woo_wallet()->wallet->debit(get_current_user_id(), ($wallet_withdrawal_amount + $transaction_charge), __('Wallet withdrawal request #', 'mstore-api') . $withdrawal_id);
         update_wallet_transaction_meta($withdrawal_transaction_id, '_withdrawal_request_id', $withdrawal_id);
         update_post_meta($withdrawal_id, '_wallet_withdrawal_transaction_id', $withdrawal_transaction_id);
         do_action('woo_wallet_withdrawal_update_meta_data', $withdrawal_id);
@@ -772,7 +778,7 @@ class FlutterTeraWallet extends FlutterBaseController
                     }
                     return true;
                 } else {
-                    return parent::sendError("invalid_data", __('Something went wrong please try again later', 'woo-wallet-withdrawal'), 400);
+                    return parent::sendError("invalid_data", __('Something went wrong please try again later', 'mstore-api'), 400);
                 }
             }
         }

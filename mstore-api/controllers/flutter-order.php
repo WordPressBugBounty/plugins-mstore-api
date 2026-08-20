@@ -1,5 +1,9 @@
 <?php
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
 {
     private function is_themehigh_checkout_field_editor_active() {
@@ -127,7 +131,7 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
             array(
                 'args' => array(
                     'id' => array(
-                        'description' => __('Unique identifier for the resource.', 'woocommerce'),
+                        'description' => __('Unique identifier for the resource.', 'mstore-api'),
                         'type' => 'integer',
                     ),
                 ),
@@ -147,7 +151,7 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
             array(
                 'args' => array(
                     'id' => array(
-                        'description' => __('Unique identifier for the resource.', 'woocommerce'),
+                        'description' => __('Unique identifier for the resource.', 'mstore-api'),
                         'type' => 'integer',
                     ),
                 ),
@@ -168,7 +172,7 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
             array(
                 'args' => array(
                     'id' => array(
-                        'description' => __('Unique identifier for the resource.', 'woocommerce'),
+                        'description' => __('Unique identifier for the resource.', 'mstore-api'),
                         'type' => 'integer',
                     ),
                 ),
@@ -517,7 +521,7 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
         if ($order->get_payment_method() == 'cod') {
            if ( $order->get_total() > 0 ) {
 			// Mark as processing or on-hold (payment won't be taken until delivery).
-                $order->update_status( apply_filters( 'woocommerce_cod_process_payment_order_status', $order->has_downloadable_item() ? 'on-hold' : 'processing', $order ), __( 'Payment to be made upon delivery.', 'woocommerce' ) );
+                $order->update_status( apply_filters( 'woocommerce_cod_process_payment_order_status', $order->has_downloadable_item() ? 'on-hold' : 'processing', $order ), __( 'Payment to be made upon delivery.', 'mstore-api' ) );
             } else {
                 $order->payment_complete();
             }
@@ -586,7 +590,7 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
             if ( $customer_id <= 0 ) {
                 return new WP_Error(
                     'auction_login_required',
-                    __( 'You must be logged in to pay for auction products.', 'wc_simple_auctions' ),
+                    __( 'You must be logged in to pay for auction products.', 'mstore-api' ),
                     array( 'status' => 401 )
                 );
             }
@@ -594,7 +598,7 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
             if ( (string) $product->get_auction_closed() !== '2' ) {
                 return new WP_Error(
                     'auction_not_ready',
-                    __( 'This auction is closed.', 'wc_simple_auctions' ),
+                    __( 'This auction is closed.', 'mstore-api' ),
                     array( 'status' => 400 )
                 );
             }
@@ -602,7 +606,7 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
             if ( $product->get_auction_payed() ) {
                 return new WP_Error(
                     'auction_already_paid',
-                    __( 'This auction product has already been paid for.', 'wc_simple_auctions' ),
+                    __( 'This auction product has already been paid for.', 'mstore-api' ),
                     array( 'status' => 400 )
                 );
             }
@@ -610,7 +614,7 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
             if ( $product->get_auction_type() === 'reverse' && get_option( 'simple_auctions_remove_pay_reverse', 'no' ) === 'yes' ) {
                 return new WP_Error(
                     'auction_reverse_not_payable',
-                    __( 'Reverse auctions cannot be paid for via this endpoint.', 'wc_simple_auctions' ),
+                    __( 'Reverse auctions cannot be paid for via this endpoint.', 'mstore-api' ),
                     array( 'status' => 400 )
                 );
             }
@@ -620,7 +624,8 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
                 return new WP_Error(
                     'auction_not_winner',
                     sprintf(
-                        __( 'You are not the winning bidder for "%s".', 'wc_simple_auctions' ),
+                        /* translators: %s: product title. */
+                        __( 'You are not the winning bidder for "%s".', 'mstore-api' ),
                         $product->get_title()
                     ),
                     array( 'status' => 400 )

@@ -135,7 +135,11 @@ class PageTemplater
         $table_insert = $wpdb->prefix . "posts";
         $join_table = $wpdb->prefix . "postmeta";
         // $sql = ;
-        $result = $wpdb->get_results($wpdb->prepare("SELECT * FROM %s AS p INNER JOIN %s AS meta ON p.ID = meta.post_id WHERE post_type = '%s' AND post_status='%s' AND (meta_value = '%s' OR meta_key = '%s')", $table_insert, $join_table, 'page', 'publish', 'mstore-api-template.php', '_mstore_checkout_template'), OBJECT);
+        $sql = "SELECT * FROM {$table_insert} AS p INNER JOIN {$join_table} AS meta ON p.ID = meta.post_id WHERE post_type = %s AND post_status = %s AND (meta_value = %s OR meta_key = %s)";
+        $result = $wpdb->get_results(
+            $wpdb->prepare($sql, 'page', 'publish', 'mstore-api-template.php', '_mstore_checkout_template'), // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            OBJECT
+        );
         if (empty($result)) {
             $pageguid = site_url() . "/mstore-api";
             // Insert the post into the database

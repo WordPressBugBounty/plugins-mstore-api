@@ -1,79 +1,32 @@
-<?php include_once(plugin_dir_path(dirname(__FILE__)) . 'functions/index.php'); ?>
+<?php
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+include_once(plugin_dir_path(dirname(__FILE__)) . 'functions/index.php');
+?>
 
 <head>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style type="text/tailwindcss">
-        .mstore-admin-shell {
-            @apply mx-auto max-w-5xl p-6 md:p-8 bg-slate-50 rounded-3xl border border-slate-200 shadow-sm
-        }
-        .mstore-admin-header {
-            @apply mb-8 pb-6 border-b border-slate-200
-        }
-        .mstore-admin-title {
-            @apply text-3xl font-semibold tracking-tight text-slate-900
-        }
-        .mstore-admin-subtitle {
-            @apply mt-2 max-w-3xl text-sm leading-6 text-slate-600
-        }
-        .mstore-section {
-            @apply mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6
-        }
-        .mstore-section-header {
-            @apply mb-5 flex items-start justify-between gap-4 border-b border-slate-100 pb-4
-        }
-        .mstore-section-title {
-            @apply text-lg font-semibold text-slate-900
-        }
-        .mstore-section-desc {
-            @apply mt-1 text-sm leading-6 text-slate-600
-        }
-        .mstore-stack {
-            @apply space-y-4
-        }
-        .mstore-card {
-            @apply rounded-2xl border border-slate-200 bg-slate-50 p-4
-        }
-        .mstore-card-title {
-            @apply mb-3 text-sm font-semibold text-slate-900
-        }
-        .mstore-notice {
-            @apply mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800
-        }
-        .mstore-file-box {
-            @apply rounded-2xl border border-slate-200 bg-slate-50 p-4
-        }
-        .mstore-action-row {
-            @apply mt-4 flex flex-wrap items-center gap-3
-        }
-        .mstore-token-output {
-            @apply w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 font-mono text-sm text-slate-800
-        }
-        .mstore-table-wrap {
-            @apply overflow-hidden rounded-2xl border border-slate-200
-        }
-        .mstore-input-class { 
-            @apply border border-slate-300 bg-white text-slate-900 text-sm rounded-2xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 w-full sm:max-w-none px-3 py-3
-        }
-        input.mstore-input-class,
-        textarea.mstore-input-class {
-            appearance: none;
-            -webkit-appearance: none;
-            border-radius: 1rem !important;
-            border-color: #cbd5e1 !important;
-            background-color: #ffffff !important;
-            box-shadow: none !important;
-        }
-        .mstore-button-class {
-            @apply mt-5 inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-center text-white bg-emerald-600 rounded-xl hover:bg-emerald-700
-        }
-        .mstore-file-input-class {
-            @apply block w-full text-sm text-slate-500
-      file:mr-4 file:py-2.5 file:px-4
-      file:rounded-xl file:border-0
-      file:text-sm file:font-semibold
-      file:bg-emerald-50 file:text-emerald-700
-      hover:file:bg-emerald-100
-        }
+    <style>
+        .mstore-admin-shell { margin: 0 auto; max-width: 72rem; padding: 24px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 24px; box-shadow: 0 1px 2px rgba(15,23,42,.06); }
+        .mstore-admin-header { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid #e2e8f0; }
+        .mstore-admin-title { margin: 0; font-size: 30px; line-height: 1.2; font-weight: 600; color: #0f172a; }
+        .mstore-admin-subtitle { margin-top: 8px; max-width: 48rem; font-size: 14px; line-height: 1.7; color: #475569; }
+        .mstore-section { margin-bottom: 24px; padding: 24px; background: #fff; border: 1px solid #e2e8f0; border-radius: 20px; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+        .mstore-section-header { margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #f1f5f9; }
+        .mstore-section-title { margin: 0; font-size: 18px; font-weight: 600; color: #0f172a; }
+        .mstore-section-desc { margin-top: 4px; font-size: 14px; line-height: 1.7; color: #475569; }
+        .mstore-stack { display: grid; gap: 16px; }
+        .mstore-card, .mstore-file-box { padding: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 18px; }
+        .mstore-card-title { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: #0f172a; }
+        .mstore-notice { margin-bottom: 24px; padding: 12px 16px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 18px; color: #065f46; font-size: 14px; font-weight: 500; }
+        .mstore-action-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+        .mstore-token-output { width: 100%; padding: 12px 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; font: 14px/1.5 monospace; color: #1e293b; }
+        .mstore-table-wrap { overflow: hidden; border: 1px solid #e2e8f0; border-radius: 18px; }
+        .mstore-input-class { width: 100%; padding: 12px 16px; border: 1px solid #cbd5e1; border-radius: 16px; background: #fff; color: #0f172a; font-size: 14px; box-sizing: border-box; }
+        .mstore-button-class { display: inline-flex; align-items: center; justify-content: center; margin-top: 20px; padding: 10px 20px; border: 0; border-radius: 14px; background: #059669; color: #fff; font-size: 14px; font-weight: 600; text-align: center; cursor: pointer; }
+        .mstore-button-class:hover { background: #047857; }
+        .mstore-file-input-class { display: block; width: 100%; font-size: 14px; color: #64748b; }
     </style>
 </head>
 <body>
@@ -86,7 +39,7 @@
         <h4 class="mstore-admin-title">MStore API Settings</h4>
         <p class="mstore-admin-subtitle">Manage product caching, push notification content, authentication files, and FluxBuilder config uploads from one place.</p>
     </div>
-    <?php echo load_template(dirname(__FILE__) . '/admin/mstore-api-admin-dashboard.php'); ?>
+    <?php include dirname(__FILE__) . '/admin/mstore-api-admin-dashboard.php'; ?>
 </div>
 
 <script>

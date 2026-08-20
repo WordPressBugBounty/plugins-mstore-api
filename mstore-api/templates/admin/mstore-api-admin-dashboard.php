@@ -1,6 +1,19 @@
+<?php
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
 
-<?php include_once(plugin_dir_path(dirname(dirname(__FILE__))) . 'functions/index.php'); ?>
-<?php include_once(plugin_dir_path(dirname(dirname(__FILE__))) . 'controllers/helpers/firebase-message-helper.php'); ?>
+if ( ! function_exists( 'mstore_sanitize_textarea_compat' ) ) {
+    function mstore_sanitize_textarea_compat( $value ) {
+        return function_exists( 'sanitize_textarea_field' )
+            ? sanitize_textarea_field( $value )
+            : sanitize_text_field( $value );
+    }
+}
+
+include_once(plugin_dir_path(dirname(dirname(__FILE__))) . 'functions/index.php');
+include_once(plugin_dir_path(dirname(dirname(__FILE__))) . 'controllers/helpers/firebase-message-helper.php');
+?>
 <!--
     <div class="wrap">
         <div class="thanks">
@@ -84,18 +97,18 @@ if (isset($verified) && $verified == "1") {
             $limit = isset($_POST['mstore_limit_product']) ? absint(wp_unslash($_POST['mstore_limit_product'])) : 10;
             update_option("mstore_limit_product", $limit > 0 ? $limit : 10);
             update_option("mstore_new_order_title", sanitize_text_field(wp_unslash($_POST['mstore_new_order_title'] ?? '')));
-            update_option("mstore_new_order_message", sanitize_textarea_field(wp_unslash($_POST['mstore_new_order_message'] ?? '')));
+            update_option("mstore_new_order_message", mstore_sanitize_textarea_compat(wp_unslash($_POST['mstore_new_order_message'] ?? '')));
             update_option("mstore_status_order_title", sanitize_text_field(wp_unslash($_POST['mstore_status_order_title'] ?? '')));
-            update_option("mstore_status_order_message", sanitize_textarea_field(wp_unslash($_POST['mstore_status_order_message'] ?? '')));
+            update_option("mstore_status_order_message", mstore_sanitize_textarea_compat(wp_unslash($_POST['mstore_status_order_message'] ?? '')));
             update_option("mstore_delivery_order_title", sanitize_text_field(wp_unslash($_POST['mstore_delivery_order_title'] ?? '')));
-            update_option("mstore_delivery_order_message", sanitize_textarea_field(wp_unslash($_POST['mstore_delivery_order_message'] ?? '')));
-            update_option("mstore_delivery_order_unassign_message", sanitize_textarea_field(wp_unslash($_POST['mstore_delivery_order_unassign_message'] ?? '')));
+            update_option("mstore_delivery_order_message", mstore_sanitize_textarea_compat(wp_unslash($_POST['mstore_delivery_order_message'] ?? '')));
+            update_option("mstore_delivery_order_unassign_message", mstore_sanitize_textarea_compat(wp_unslash($_POST['mstore_delivery_order_unassign_message'] ?? '')));
 
             if ($is_listeo) {
                 update_option("mstore_new_booking_title", sanitize_text_field(wp_unslash($_POST['mstore_new_booking_title'] ?? '')));
-                update_option("mstore_new_booking_message", sanitize_textarea_field(wp_unslash($_POST['mstore_new_booking_message'] ?? '')));
+                update_option("mstore_new_booking_message", mstore_sanitize_textarea_compat(wp_unslash($_POST['mstore_new_booking_message'] ?? '')));
                 update_option("mstore_status_booking_title", sanitize_text_field(wp_unslash($_POST['mstore_status_booking_title'] ?? '')));
-                update_option("mstore_status_booking_message", sanitize_textarea_field(wp_unslash($_POST['mstore_status_booking_message'] ?? '')));
+                update_option("mstore_status_booking_message", mstore_sanitize_textarea_compat(wp_unslash($_POST['mstore_status_booking_message'] ?? '')));
             }
 
             $settings_saved = true;
@@ -265,8 +278,8 @@ if (isset($verified) && $verified == "1") {
             if(FirebaseMessageHelper::is_file_existed()){
                 ?>
                 <div class="mstore-file-box flex flex-wrap items-center justify-between gap-3">
-                    <a  href="<?php echo esc_url(FirebaseMessageHelper::get_config_file_url()); ?>" target="_blank" class="mr-2 text-sm font-medium text-slate-700"><?=FirebaseMessageHelper::get_file_name()?></a>
-                    <button type="button" data-nonce="<?php echo wp_create_nonce('delete_config_firebase_file'); ?>" class="mstore-delete-firebase-file">
+                    <a  href="<?php echo esc_url(FirebaseMessageHelper::get_config_file_url()); ?>" target="_blank" class="mr-2 text-sm font-medium text-slate-700"><?php echo esc_html(FirebaseMessageHelper::get_file_name()); ?></a>
+                    <button type="button" data-nonce="<?php echo esc_attr(wp_create_nonce('delete_config_firebase_file')); ?>" class="mstore-delete-firebase-file">
                         <svg class="w-5 h-5 text-red-500" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
                             <path d="M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5Zm3.707 11.793a1 1 0 1 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 1.414-1.414L10 8.586l2.293-2.293a1 1 0 0 1 1.414 1.414L11.414 10l2.293 2.293Z"/>
                         </svg>
@@ -314,8 +327,8 @@ if (isset($verified) && $verified == "1") {
             if(FlutterAppleSignInUtils::is_file_existed()){
                 ?>
                 <div class="mstore-file-box flex flex-wrap items-center justify-between gap-3">
-                    <a  href="<?php echo esc_url(FlutterAppleSignInUtils::get_config_file_url()); ?>" target="_blank" class="mr-2 text-sm font-medium text-slate-700"><?=FlutterAppleSignInUtils::get_file_name()?></a>
-                    <button type="button" data-nonce="<?php echo wp_create_nonce('delete_config_apple_file'); ?>" class="mstore-delete-apple-file">
+                    <a  href="<?php echo esc_url(FlutterAppleSignInUtils::get_config_file_url()); ?>" target="_blank" class="mr-2 text-sm font-medium text-slate-700"><?php echo esc_html(FlutterAppleSignInUtils::get_file_name()); ?></a>
+                    <button type="button" data-nonce="<?php echo esc_attr(wp_create_nonce('delete_config_apple_file')); ?>" class="mstore-delete-apple-file">
                         <svg class="w-5 h-5 text-red-500" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
                             <path d="M10 .5a9.5 9.5 0 1 0 9.5 9.5A9.51 9.51 0 0 0 10 .5Zm3.707 11.793a1 1 0 1 1-1.414 1.414L10 11.414l-2.293 2.293a1 1 0 0 1-1.414-1.414L8.586 10 6.293 7.707a1 1 0 0 1 1.414-1.414L10 8.586l2.293-2.293a1 1 0 0 1 1.414 1.414L11.414 10l2.293 2.293Z"/>
                         </svg>
@@ -412,7 +425,7 @@ if (isset($verified) && $verified == "1") {
                             </th>
                             <td class="px-6 py-4">
                             <a href="<?php echo esc_url(FlutterUtils::get_json_file_url($file)); ?>" target="_blank" class="text-green-700">Download</a>
-                                / <a data-id="<?php echo getLangCodeFromConfigFile($file); ?>" data-nonce="<?php echo wp_create_nonce('delete_config_json_file'); ?>" class="text-red-900 cursor-pointer mstore-delete-json-file">Delete</a>
+                                / <a data-id="<?php echo esc_attr(getLangCodeFromConfigFile($file)); ?>" data-nonce="<?php echo esc_attr(wp_create_nonce('delete_config_json_file')); ?>" class="text-red-900 cursor-pointer mstore-delete-json-file">Delete</a>
                             </td>
                         </tr>
                         <?php
@@ -429,7 +442,7 @@ if (isset($verified) && $verified == "1") {
                 <?php wp_nonce_field( 'upload_file', 'upload_file_nonce' ); ?>
                 <div class="mstore-file-box">
                     <p class="mb-3 text-sm font-medium text-slate-900">Upload new config file</p>
-                    <input type="file" id="fileToUpload" accept=".json" name="fileToUpload" class="mstore-file-input-class" data-nonce="<?php echo wp_create_nonce('upload_file'); ?>"/>
+                    <input type="file" id="fileToUpload" accept=".json" name="fileToUpload" class="mstore-file-input-class" data-nonce="<?php echo esc_attr(wp_create_nonce('upload_file')); ?>"/>
                 </div>
                 <p style="font-size: 14px; color: #1B9D0D; margin-top:10px">
                 <?php

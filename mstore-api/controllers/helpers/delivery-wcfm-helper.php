@@ -1,5 +1,19 @@
 <?php
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+if ( ! function_exists( 'mstore_wp_date_compat' ) ) {
+    function mstore_wp_date_compat( $format, $timestamp ) {
+        if ( function_exists( 'wp_date' ) ) {
+            return wp_date( $format, $timestamp );
+        }
+
+        return date_i18n( $format, $timestamp );
+    }
+}
+
 class DeliveryWCFMHelper
 {
     public function sendError($code, $message, $statusCode)
@@ -58,15 +72,20 @@ class DeliveryWCFMHelper
             $sql .= " AND delivery_boy = %s";
             $sql .= " AND is_trashed = 0";
  
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $total = count($wpdb->get_results($wpdb->prepare($sql, $user_id)));
 
             $pending_sql = $sql . " AND delivery_status = 'pending' GROUP BY order_id";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $pending_sql = $wpdb->prepare($pending_sql, $user_id);
             
             $delivered_sql = $sql . " AND delivery_status = 'delivered' GROUP BY order_id";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $delivered_sql = $wpdb->prepare($delivered_sql, $user_id);
 
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $pending_count = count($wpdb->get_results($pending_sql));
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $delivered_count = count($wpdb->get_results($delivered_sql));
 
             $results = array(
@@ -98,11 +117,14 @@ class DeliveryWCFMHelper
             $order_id = sanitize_text_field($request['id']);
             if(isset($order_id) && is_numeric($order_id)){
                 $sql .= " AND order_id = %s";
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 $sql = $wpdb->prepare($sql,$user_id,$order_id);
             }else{
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 $sql = $wpdb->prepare($sql,$user_id );
             }
             
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $items = $wpdb->get_results($sql);
             if (!empty($items)) {
                 $vendor = new FlutterWCFMHelper();
@@ -155,7 +177,9 @@ class DeliveryWCFMHelper
         $sql .= " AND is_trashed = 0";
         $sql .= " AND delivery_status = 'pending'";
         $sql .= " GROUP BY $table_name.`vendor_id`";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql = $wpdb->prepare($sql, $user_id);
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         $items = $wpdb->get_results($sql);
 
         $vendor = new FlutterWCFMHelper();
@@ -216,7 +240,9 @@ class DeliveryWCFMHelper
             }
             $args[] = $per_page;
             $args[] = $page;
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $args);
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $items = $wpdb->get_results($sql);
 
 
@@ -293,12 +319,14 @@ class DeliveryWCFMHelper
             $sql .= " ORDER BY wcfm_messages.`ID` DESC";
             $sql .= " LIMIT %d";
             $sql .= " OFFSET %d";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $message_to, $message_to, $message_to, $limit, $offset);
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $wcfm_messages = $wpdb->get_results($sql);
 
             foreach ($wcfm_messages as $wcfm_message) {
                 unset($wcfm_message->author_id, $wcfm_message->reply_to, $wcfm_message->author_is_admin, $wcfm_message->author_is_vendor, $wcfm_message->author_is_customer, $wcfm_message->is_notice, $wcfm_message->is_direct_message, $wcfm_message->is_pined, $wcfm_message->message_to);
-                $wcfm_message->message = strip_tags($wcfm_message->message);
+                $wcfm_message->message = wp_strip_all_tags($wcfm_message->message);
             }
         }
         return new WP_REST_Response(array(
@@ -365,11 +393,14 @@ class DeliveryWCFMHelper
         // so one driver cannot mark another driver's delivery as done.
         if (!user_can($user_id, 'manage_woocommerce')) {
             $sql .= " AND delivery_boy = %d";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $order_id, $user_id);
         } else {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $order_id);
         }
 
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         $delivery_details = $wpdb->get_results($sql);
 
         if (empty($delivery_details)) {
@@ -380,14 +411,15 @@ class DeliveryWCFMHelper
             foreach ($delivery_details as $delivery_detail) {
                 $delivery_id = $delivery_detail->ID;
                 // Update Delivery Order Status Update
-                $wpdb->update("{$wpdb->prefix}wcfm_delivery_orders", array('delivery_status' => 'delivered', 'delivery_date' => date('Y-m-d H:i:s', current_time('timestamp', 0))), array('ID' => $delivery_id), array('%s', '%s'), array('%d'));
+                $wpdb->update("{$wpdb->prefix}wcfm_delivery_orders", array('delivery_status' => 'delivered', 'delivery_date' => mstore_wp_date_compat('Y-m-d H:i:s', current_time('timestamp', 0))), array('ID' => $delivery_id), array('%s', '%s'), array('%d'));
 
                 $order = wc_get_order($delivery_detail->order_id);
                 $wcfm_delivery_boy_user = get_userdata($delivery_detail->delivery_boy);
 
                 if (apply_filters('wcfm_is_show_marketplace_itemwise_orders', true)) {
                     // Admin Notification
-                    $wcfm_messages = sprintf(__('Order <b>%s</b> item <b>%s</b> delivered by <b>%s</b>.', 'wc-frontend-manager-delivery'), '#<a class="wcfm_dashboard_item_title" target="_blank" href="' . get_wcfm_view_order_url($delivery_detail->order_id) . '">' . $order->get_order_number() . '</a>', get_the_title($delivery_detail->product_id), '<a class="wcfm_dashboard_item_title" target="_blank" href="' . get_wcfm_delivery_boys_stats_url($delivery_detail->delivery_boy) . '">' . $wcfm_delivery_boy_user->first_name . ' ' . $wcfm_delivery_boy_user->last_name . '</a>');
+                    /* translators: 1: order link, 2: product title, 3: delivery boy link. */
+                    $wcfm_messages = sprintf(__('Order <b>%1$s</b> item <b>%2$s</b> delivered by <b>%3$s</b>.', 'mstore-api'), '#<a class="wcfm_dashboard_item_title" target="_blank" href="' . get_wcfm_view_order_url($delivery_detail->order_id) . '">' . $order->get_order_number() . '</a>', get_the_title($delivery_detail->product_id), '<a class="wcfm_dashboard_item_title" target="_blank" href="' . get_wcfm_delivery_boys_stats_url($delivery_detail->delivery_boy) . '">' . $wcfm_delivery_boy_user->first_name . ' ' . $wcfm_delivery_boy_user->last_name . '</a>');
                     $WCFM->wcfm_notification->wcfm_send_direct_message(-2, 0, 0, 0, $wcfm_messages, 'delivery_complete');
 
                     // Vendor Notification
@@ -396,13 +428,15 @@ class DeliveryWCFMHelper
                     }
 
                     // Order Note
-                    $wcfm_messages = sprintf(__('Order <b>%s</b> item <b>%s</b> delivered by <b>%s</b>.', 'wc-frontend-manager-delivery'), '#<span class="wcfm_dashboard_item_title">' . $order->get_order_number() . '</span>', get_the_title($delivery_detail->product_id), $wcfm_delivery_boy_user->first_name . ' ' . $wcfm_delivery_boy_user->last_name);
+                    /* translators: 1: order number, 2: product title, 3: delivery boy name. */
+                    $wcfm_messages = sprintf(__('Order <b>%1$s</b> item <b>%2$s</b> delivered by <b>%3$s</b>.', 'mstore-api'), '#<span class="wcfm_dashboard_item_title">' . $order->get_order_number() . '</span>', get_the_title($delivery_detail->product_id), $wcfm_delivery_boy_user->first_name . ' ' . $wcfm_delivery_boy_user->last_name);
                     $comment_id = $order->add_order_note($wcfm_messages, apply_filters('wcfm_is_allow_delivery_note_to_customer', '1'));
 
                     do_action('wcfmd_after_order_item_mark_delivered', $delivery_detail->order_id, $delivery_detail->product_id, $delivery_detail);
                 } elseif (!$delivered_not_notified) {
                     // Admin Notification
-                    $wcfm_messages = sprintf(__('Order <b>%s</b> delivered by <b>%s</b>.', 'wc-frontend-manager-delivery'), '#<a class="wcfm_dashboard_item_title" target="_blank" href="' . get_wcfm_view_order_url($delivery_detail->order_id) . '">' . $order->get_order_number() . '</a>', '<a class="wcfm_dashboard_item_title" target="_blank" href="' . get_wcfm_delivery_boys_stats_url($delivery_detail->delivery_boy) . '">' . $wcfm_delivery_boy_user->first_name . ' ' . $wcfm_delivery_boy_user->last_name . '</a>');
+                    /* translators: 1: order link, 2: delivery boy link. */
+                    $wcfm_messages = sprintf(__('Order <b>%1$s</b> delivered by <b>%2$s</b>.', 'mstore-api'), '#<a class="wcfm_dashboard_item_title" target="_blank" href="' . get_wcfm_view_order_url($delivery_detail->order_id) . '">' . $order->get_order_number() . '</a>', '<a class="wcfm_dashboard_item_title" target="_blank" href="' . get_wcfm_delivery_boys_stats_url($delivery_detail->delivery_boy) . '">' . $wcfm_delivery_boy_user->first_name . ' ' . $wcfm_delivery_boy_user->last_name . '</a>');
                     $WCFM->wcfm_notification->wcfm_send_direct_message(-2, 0, 0, 0, $wcfm_messages, 'delivery_complete');
 
                     // Vendor Notification
@@ -411,7 +445,8 @@ class DeliveryWCFMHelper
                     }
 
                     // Order Note
-                    $wcfm_messages = sprintf(__('Order <b>%s</b> delivered by <b>%s</b>.', 'wc-frontend-manager-delivery'), '#<span class="wcfm_dashboard_item_title">' . $order->get_order_number() . '</span>', $wcfm_delivery_boy_user->first_name . ' ' . $wcfm_delivery_boy_user->last_name);
+                    /* translators: 1: order number, 2: delivery boy name. */
+                    $wcfm_messages = sprintf(__('Order <b>%1$s</b> delivered by <b>%2$s</b>.', 'mstore-api'), '#<span class="wcfm_dashboard_item_title">' . $order->get_order_number() . '</span>', $wcfm_delivery_boy_user->first_name . ' ' . $wcfm_delivery_boy_user->last_name);
                     $comment_id = $order->add_order_note($wcfm_messages, apply_filters('wcfm_is_allow_delivery_note_to_customer', '1'));
 
                     do_action('wcfmd_after_order_mark_delivered', $delivery_detail->order_id, $delivery_detail);

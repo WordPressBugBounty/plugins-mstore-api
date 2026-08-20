@@ -1,4 +1,8 @@
 <?php
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 require_once(__DIR__ . '/flutter-base.php');
 require_once(__DIR__ . '/helpers/flutter-stripe-helper.php');
 
@@ -312,13 +316,13 @@ class FlutterPaidMembershipsPro extends FlutterBaseController
             $morder = pmpro_build_order_for_checkout();
             $pmpro_processed = $morder->process();
             if ( ! empty( $pmpro_processed ) ) {
-                $pmpro_msg       = __( "Payment accepted.", 'paid-memberships-pro' );
+                $pmpro_msg       = __( "Payment accepted.", 'mstore-api' );
                 $pmpro_msgt      = "pmpro_success";
                 $pmpro_confirmed = true;
             } else {
                 $pmpro_msg = !empty( $morder->error ) ? $morder->error : null;
                 if ( empty( $pmpro_msg ) ) {
-                    $pmpro_msg = __( "Unknown error generating account. Please contact us to set up your membership.", 'paid-memberships-pro' );
+                    $pmpro_msg = __( "Unknown error generating account. Please contact us to set up your membership.", 'mstore-api' );
                 }
                 
                 if ( ! empty( $morder->error_type ) ) {
@@ -352,18 +356,14 @@ class FlutterPaidMembershipsPro extends FlutterBaseController
                 $e_msg = $user_id->get_error_message();
             }
 
-            $pmpro_msg  = __( "Your payment was accepted, but there was an error setting up your account. Please contact us.", 'paid-memberships-pro' ) . sprintf( " %s", $e_msg ); // Dirty 'don't break translation hack.
+            $pmpro_msg  = __( "Your payment was accepted, but there was an error setting up your account. Please contact us.", 'mstore-api' ) . sprintf( " %s", $e_msg ); // Dirty 'don't break translation hack.
             $pmpro_msgt = "pmpro_error";
             return parent::sendError($pmpro_msgt, $pmpro_msg, 400);
         } elseif ( apply_filters( 'pmpro_setup_new_user', true, $user_id, $new_user_array, $pmpro_level ) ) {
 
             //check pmpro_wp_new_user_notification filter before sending the default WP email
             if ( apply_filters( "pmpro_wp_new_user_notification", true, $user_id, $pmpro_level->id ) ) {
-                if ( version_compare( $wp_version, "4.3.0" ) >= 0 ) {
-                    wp_new_user_notification( $user_id, null, 'both' );
-                } else {
-                    wp_new_user_notification( $user_id, $new_user_array['user_pass'] );
-                }
+                wp_new_user_notification( $user_id, null, 'both' );
             }
 
             $wpuser = get_userdata( $user_id );
@@ -412,9 +412,9 @@ class FlutterPaidMembershipsPro extends FlutterBaseController
             //calculate the end date
             if ( ! empty( $pmpro_level->expiration_number ) ) {
                 if( $pmpro_level->expiration_period == 'Hour' ){
-                    $enddate =  date( "Y-m-d H:i:s", strtotime( "+ " . $pmpro_level->expiration_number . " " . $pmpro_level->expiration_period, current_time( "timestamp" ) ) );
+                    $enddate =  date_i18n( "Y-m-d H:i:s", strtotime( "+ " . $pmpro_level->expiration_number . " " . $pmpro_level->expiration_period, current_time( "timestamp" ) ) );
                 } else {
-                    $enddate =  date( "Y-m-d 23:59:59", strtotime( "+ " . $pmpro_level->expiration_number . " " . $pmpro_level->expiration_period, current_time( "timestamp" ) ) );
+                    $enddate =  date_i18n( "Y-m-d 23:59:59", strtotime( "+ " . $pmpro_level->expiration_number . " " . $pmpro_level->expiration_period, current_time( "timestamp" ) ) );
                 }
             } else {
                 $enddate = "NULL";
@@ -455,7 +455,7 @@ class FlutterPaidMembershipsPro extends FlutterBaseController
             //update membership_user table.		
             if ( ! empty( $discount_code ) && ! empty( $use_discount_code ) ) {
                 $sql = $wpdb->prepare("SELECT id FROM $wpdb->pmpro_discount_codes WHERE code = %s LIMIT 1", esc_sql( $discount_code ));
-                $discount_code_id = $wpdb->get_var( $sql );
+                $discount_code_id = $wpdb->get_var( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             } else {
                 $discount_code_id = "";
             }
@@ -510,8 +510,9 @@ class FlutterPaidMembershipsPro extends FlutterBaseController
                     }
     
                     $sql = "INSERT INTO $wpdb->pmpro_discount_codes_uses (code_id, user_id, order_id, timestamp) VALUES(%s, %s, %d, %s)";
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                     $sql = $wpdb->prepare($sql,$discount_code_id, $user_id, intval( $code_order_id ), current_time( "mysql" ));
-                    $wpdb->query( $sql );
+                    $wpdb->query( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                     
                     do_action( 'pmpro_discount_code_used', $discount_code_id, $user_id, $code_order_id );
                 }
@@ -617,13 +618,14 @@ class FlutterPaidMembershipsPro extends FlutterBaseController
     
                 //CUSTOMIZE RESPONSE
                 if(empty($current_user->membership_level))
-                    $confirmation_message = "<p>" . __('Your payment has been submitted. Your membership will be activated shortly.', 'paid-memberships-pro' ) . "</p>";
+                    $confirmation_message = "<p>" . __('Your payment has been submitted. Your membership will be activated shortly.', 'mstore-api' ) . "</p>";
                 else
-                    $confirmation_message = "<p>" . sprintf(__('Thank you for your membership to %s. Your %s membership is now active.', 'paid-memberships-pro' ), get_bloginfo("name"), $current_user->membership_level->name) . "</p>";
+                    /* translators: 1: site name, 2: membership level name. */
+                    $confirmation_message = "<p>" . sprintf(__('Thank you for your membership to %1$s. Your %2$s membership is now active.', 'mstore-api' ), get_bloginfo("name"), $current_user->membership_level->name) . "</p>";
 
                 //confirmation message for this level
                 $sqlQuery = $wpdb->prepare("SELECT l.confirmation FROM $wpdb->pmpro_membership_levels l LEFT JOIN $wpdb->pmpro_memberships_users mu ON l.id = mu.membership_id WHERE mu.status = 'active' AND mu.user_id = %s LIMIT 1", $current_user->ID);
-                $level_message = $wpdb->get_var($sqlQuery);
+                $level_message = $wpdb->get_var($sqlQuery); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 if(!empty($level_message))
                     $confirmation_message .= "\n" . stripslashes($level_message) . "\n";
 
@@ -631,7 +633,8 @@ class FlutterPaidMembershipsPro extends FlutterBaseController
                     $invoice->getUser();
                     $invoice->getMembershipLevel();
 
-                    $confirmation_message .= "<p>" . sprintf(__('Below are details about your membership account and a receipt for your initial membership invoice. A welcome email with a copy of your initial membership invoice has been sent to %s.', 'paid-memberships-pro' ), $invoice->user->user_email) . "</p>";
+                    /* translators: %s: member email address. */
+                    $confirmation_message .= "<p>" . sprintf(__('Below are details about your membership account and a receipt for your initial membership invoice. A welcome email with a copy of your initial membership invoice has been sent to %s.', 'mstore-api' ), $invoice->user->user_email) . "</p>";
 
                     // Check instructions
                     if ( $invoice->gateway == "check" && ! pmpro_isLevelFree( $invoice->membership_level ) ) {
@@ -651,10 +654,10 @@ class FlutterPaidMembershipsPro extends FlutterBaseController
                 // test that the order object contains data
                 $test = (array) $morder;
                 if ( ! empty( $test ) && $morder->cancel() ) {
-                    $pmpro_msg = __( "IMPORTANT: Something went wrong during membership creation. Your credit card authorized, but we cancelled the order immediately. You should not try to submit this form again. Please contact the site owner to fix this issue.", 'paid-memberships-pro' );
+                    $pmpro_msg = __( "IMPORTANT: Something went wrong during membership creation. Your credit card authorized, but we cancelled the order immediately. You should not try to submit this form again. Please contact the site owner to fix this issue.", 'mstore-api' );
                     $morder    = null;
                 } else {
-                    $pmpro_msg = __( "IMPORTANT: Something went wrong during membership creation. Your credit card was charged, but we couldn't assign your membership. You should not submit this form again. Please contact the site owner to fix this issue.", 'paid-memberships-pro' );
+                    $pmpro_msg = __( "IMPORTANT: Something went wrong during membership creation. Your credit card was charged, but we couldn't assign your membership. You should not submit this form again. Please contact the site owner to fix this issue.", 'mstore-api' );
                 }
 
                 return parent::sendError($pmpro_msgt, $pmpro_msg, 400);	

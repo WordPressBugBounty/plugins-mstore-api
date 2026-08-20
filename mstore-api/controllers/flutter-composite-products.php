@@ -1,4 +1,9 @@
 <?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 require_once(__DIR__ . '/flutter-base.php');
 
 /*
@@ -34,7 +39,7 @@ class FlutterCompositeProducts extends FlutterBaseController
         register_rest_route($this->namespace, '/product'.'/(?P<id>[\d]+)'.'/components', array(
             'args' => array(
                     'id' => array(
-                        'description' => __('Unique identifier for the resource.', 'woocommerce'),
+                        'description' => __('Unique identifier for the resource.', 'mstore-api'),
                         'type' => 'integer',
                 ),
             ),

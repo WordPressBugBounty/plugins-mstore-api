@@ -1,4 +1,9 @@
 <?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 require_once(__DIR__ . '/flutter-base.php');
 
 use Firebase\JWT\JWT;
@@ -101,13 +106,13 @@ class FlutterIyzico extends FlutterBaseController
     
             if ( $checkoutFormResult->getPaymentStatus() === "INIT_BANK_TRANSFER" && $checkoutFormResult->getStatus() === "success" ) {
                 $order->update_status( "on-hold" );
-                $orderMessage = __( 'iyzico Bank transfer/EFT payment is pending.', 'woocommerce-iyzico' );
+                $orderMessage = __( 'iyzico Bank transfer/EFT payment is pending.', 'mstore-api' );
                 $order->add_order_note( $orderMessage, 0, true );
             }
     
             if ( $checkoutFormResult->getPaymentStatus() === "PENDING_CREDIT" && $checkoutFormResult->getStatus() === "success" ) {
                 $order->update_status( "on-hold" );
-                $orderMessage = __( 'The shopping credit transaction has been initiated.', 'woocommerce-iyzico' );
+                $orderMessage = __( 'The shopping credit transaction has been initiated.', 'mstore-api' );
                 $order->add_order_note( $orderMessage, 0, true );
             }
         }

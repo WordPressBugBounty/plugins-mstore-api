@@ -9,7 +9,7 @@ class FirebaseMessageHelper
         $uploads_dir = wp_upload_dir();
         $folder = trailingslashit($uploads_dir["basedir"]) . FirebaseMessageHelper::$folder_path;
         if (!file_exists($folder)) {
-            mkdir($folder, 0755, true);
+            wp_mkdir_p($folder);
         }
     }
 
@@ -45,7 +45,7 @@ class FirebaseMessageHelper
             wp_upload_bits($file_name, null, $fileContent); 
             $destination = FirebaseMessageHelper::get_config_file_path($file_name);
             FirebaseMessageHelper::create_config_folder();
-            move_uploaded_file($source, $destination);
+            file_put_contents($destination, $fileContent);
             update_option("mstore_firebase_file_name", $file_name);
             return null;
         }else{
@@ -68,7 +68,7 @@ class FirebaseMessageHelper
         if (wp_verify_nonce($nonce, 'delete_config_firebase_file')) {
             $file_name = FirebaseMessageHelper::get_file_name();
             $filePath =  FirebaseMessageHelper::get_config_file_path($file_name);
-            unlink($filePath);
+            wp_delete_file($filePath);
             update_option("mstore_firebase_file_name", "");
         }
     }

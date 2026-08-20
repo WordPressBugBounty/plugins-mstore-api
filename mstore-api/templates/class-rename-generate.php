@@ -1,5 +1,9 @@
 <?php
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 /* Custom Wordpress Thumbnail Names
  * https://gist.github.com/meek2100/e5ac625a975569fbfe13177d4021baaf
  *

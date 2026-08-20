@@ -1,4 +1,9 @@
 <?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 require_once(__DIR__ . '/flutter-base.php');
 
 /*
@@ -409,7 +414,7 @@ class FlutterB2BKing extends FlutterBaseController
             'permission_callback' => $perm,
         ]]);
 
-        $id_arg = ['id' => ['description' => __('Unique identifier for the resource.', 'woocommerce'), 'type' => 'integer']];
+        $id_arg = ['id' => ['description' => __('Unique identifier for the resource.', 'mstore-api'), 'type' => 'integer']];
 
         register_rest_route($this->namespace, '/product/(?P<id>[\d]+)/tiered_price', [
             'args' => $id_arg,

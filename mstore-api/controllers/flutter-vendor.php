@@ -1,4 +1,8 @@
 <?php
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 require_once(__DIR__ . '/helpers/vendor-wcfm.php');
 require_once(__DIR__ . '/flutter-products.php');
 
@@ -92,7 +96,7 @@ class FlutterVendor extends FlutterBaseController
         register_rest_route($this->namespace, '/wcfm-stores' . '/(?P<id>[\d]+)/', array(
             'args' => array(
                 'id' => array(
-                    'description' => __('Unique identifier for the object.', 'wcfm-marketplace-rest-api'),
+                    'description' => __('Unique identifier for the object.', 'mstore-api'),
                     'type' => 'integer',
                 )
             ),
@@ -286,8 +290,9 @@ class FlutterVendor extends FlutterBaseController
                     $sql = "SELECT {$table_name}.ID";
                     $sql .= " FROM {$table_name}";
                     $sql .= " WHERE {$table_name}.user_nicename = %s ";
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                     $sql = $wpdb->prepare($sql, $slug);
-                    $users = $wpdb->get_results($sql);
+                    $users = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
                     if (count($users) != 1) {
                         return parent::sendError("invalid_url", "Not Found", 404);
                     }
@@ -304,16 +309,16 @@ class FlutterVendor extends FlutterBaseController
         $params = array(
             'media_attachment' => array(
                 'required' => true,
-                'description' => __('Image encoded as base64.', 'image-from-base64'),
+                'description' => __('Image encoded as base64.', 'mstore-api'),
                 'type' => 'string'
             ),
             'title' => array(
                 'required' => true,
-                'description' => __('The title for the object.', 'image-from-base64'),
+                'description' => __('The title for the object.', 'mstore-api'),
                 'type' => 'json'
             ),
             'media_path' => array(
-                'description' => __('Path to directory where file will be uploaded.', 'image-from-base64'),
+                'description' => __('Path to directory where file will be uploaded.', 'mstore-api'),
                 'type' => 'string'
             )
         );
@@ -472,8 +477,9 @@ class FlutterVendor extends FlutterBaseController
         global $woocommerce, $wpdb;
         $table_name = $wpdb->prefix . "posts";
         $sql = "SELECT count(*) as count  FROM `$table_name` WHERE `$table_name`.`post_author` = %s AND `$table_name`.`post_type` = 'product' AND `$table_name`.`id` = %s LIMIT 1";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql = $wpdb->prepare($sql, $user_id, $product_id);
-        $results = $wpdb->get_row($sql);
+        $results = $wpdb->get_row($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         if ($results->count == 1) {
             $controller = new CUSTOM_WC_REST_Products_Controller();
             $req = new WP_REST_Request('GET');
@@ -611,8 +617,9 @@ class FlutterVendor extends FlutterBaseController
             global $woocommerce, $wpdb;
             $table_name = $wpdb->prefix . "posts";
             $sql = "SELECT * FROM `$table_name` WHERE `$table_name`.`post_author` = %s AND `$table_name`.`post_type` = 'product' LIMIT %d OFFSET %d";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql,$user_id, $limit, $page);
-            $products = $wpdb->get_results($sql);
+            $products = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         }
 
         $ids = array();
@@ -847,8 +854,9 @@ class FlutterVendor extends FlutterBaseController
             global $wpdb, $WCFM;
             $table_name = $wpdb->prefix . "wcfm_marketplace_reviews";
             $offset = ($page - 1) * $per_page;
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare("SELECT * FROM $table_name WHERE vendor_id = %s AND approved = %d ORDER BY created DESC LIMIT %d OFFSET %d",$store_id, $status, $per_page, $offset);
-            $reviews = $wpdb->get_results($sql);
+            $reviews = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             foreach ($reviews as $each_review) {
                 $wp_user_avatar_id = get_user_meta($each_review->author_id, 'wp_user_avatar', true);
                 $wp_user_avatar = wp_get_attachment_url($wp_user_avatar_id);

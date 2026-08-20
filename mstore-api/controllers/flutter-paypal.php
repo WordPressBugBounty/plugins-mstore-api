@@ -1,4 +1,9 @@
 <?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 require_once(__DIR__ . '/flutter-base.php');
 
 /*
@@ -56,7 +61,7 @@ class FlutterPayPal extends FlutterBaseController
         $order    = wc_get_order( $order_id );
 
         if ( ! $order ) {
-            return new \WP_Error( 'dokan_paypal_invalid_order', __( 'Invalid order.', 'dokan' ), [ 'status' => 404 ] );
+            return new \WP_Error( 'dokan_paypal_invalid_order', __( 'Invalid order.', 'mstore-api' ), [ 'status' => 404 ] );
         }
 
         // Ensure WooCommerce session exists for gateway side-effects.
@@ -68,7 +73,7 @@ class FlutterPayPal extends FlutterBaseController
         $gateway  = $gateways['dokan_paypal_marketplace'] ?? null;
 
         if ( ! $gateway || 'yes' !== $gateway->get_option( 'enabled' ) ) {
-            return new \WP_Error( 'dokan_paypal_disabled', __( 'Dokan PayPal Marketplace gateway is not available.', 'dokan' ), [ 'status' => 400 ] );
+            return new \WP_Error( 'dokan_paypal_disabled', __( 'Dokan PayPal Marketplace gateway is not available.', 'mstore-api' ), [ 'status' => 400 ] );
         }
 
         $result = $gateway->process_payment( $order_id );
@@ -76,7 +81,7 @@ class FlutterPayPal extends FlutterBaseController
         if ( empty( $result ) || ( isset( $result['result'] ) && 'success' !== $result['result'] ) ) {
             return new \WP_Error(
                 'dokan_paypal_failed',
-                __( 'PayPal failed to create the checkout session.', 'dokan' ),
+                __( 'PayPal failed to create the checkout session.', 'mstore-api' ),
                 [
                     'status'  => 500,
                     'details' => $result,

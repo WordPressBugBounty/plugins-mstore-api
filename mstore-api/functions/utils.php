@@ -7,7 +7,7 @@ class FlutterUtils {
         $uploads_dir = wp_upload_dir();
         $folder = trailingslashit($uploads_dir["basedir"]) . FlutterUtils::$folder_path;
         if (!file_exists($folder)) {
-            mkdir($folder, 0755, true);
+            wp_mkdir_p($folder);
         }
     }
 
@@ -80,11 +80,11 @@ class FlutterUtils {
             wp_upload_bits($file_name, null, file_get_contents($source)); 
             $destination = FlutterUtils::get_json_file_path($file_name);
             FlutterUtils::create_json_folder();
-            move_uploaded_file($source, $destination);
+            file_put_contents($destination, $fileContent);
 
             //delete old json file
             if(FlutterUtils::is_existed_old_file($file_name)){
-                unlink(FlutterUtils::get_old_json_file_path($file_name));
+                wp_delete_file(FlutterUtils::get_old_json_file_path($file_name));
             }
             return null;
           }else{
@@ -97,7 +97,7 @@ class FlutterUtils {
         if(strlen($id) == 2){
             if (wp_verify_nonce($nonce, 'delete_config_json_file')) {
                 $filePath = FlutterUtils::get_json_file_path("config_".$id.".json");
-                unlink($filePath);
+                wp_delete_file($filePath);
                 echo "success";
                 die();
             }
@@ -116,7 +116,7 @@ class FlutterAppleSignInUtils {
         $uploads_dir = wp_upload_dir();
         $folder = trailingslashit($uploads_dir["basedir"]) . FlutterAppleSignInUtils::$folder_path;
         if (!file_exists($folder)) {
-            mkdir($folder, 0755, true);
+            wp_mkdir_p($folder);
         }
     }
 
@@ -154,7 +154,7 @@ class FlutterAppleSignInUtils {
             wp_upload_bits($file_name, null, file_get_contents($source)); 
             $destination = FlutterAppleSignInUtils::get_config_file_path($file_name);
             FlutterAppleSignInUtils::create_config_folder();
-            move_uploaded_file($source, $destination);
+            file_put_contents($destination, $fileContent);
             $key_id = str_replace(['AuthKey_','.p8'], '', $file_name);
             update_option("mstore_apple_sign_in_file_name", $file_name);
             update_option("mstore_apple_sign_in_key_id", $key_id);
@@ -178,7 +178,7 @@ class FlutterAppleSignInUtils {
         if (wp_verify_nonce($nonce, 'delete_config_apple_file')) {
             $file_name = get_option("mstore_apple_sign_in_file_name");
             $filePath =  FlutterAppleSignInUtils::get_config_file_path($file_name);
-            unlink($filePath);
+            wp_delete_file($filePath);
             update_option("mstore_apple_sign_in_file_name", "");
             update_option("mstore_apple_sign_in_key_id", "");
         }

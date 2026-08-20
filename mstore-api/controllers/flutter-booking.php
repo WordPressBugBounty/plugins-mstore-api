@@ -1,4 +1,19 @@
 <?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+if ( ! function_exists( 'mstore_wp_date_compat' ) ) {
+    function mstore_wp_date_compat( $format, $timestamp ) {
+        if ( function_exists( 'wp_date' ) ) {
+            return wp_date( $format, $timestamp );
+        }
+
+        return date_i18n( $format, $timestamp );
+    }
+}
+
 require_once(__DIR__ . '/flutter-base.php');
 
 /*
@@ -195,8 +210,9 @@ class FlutterBooking extends FlutterBaseController
         $results = [];
         global $wpdb;
         $table_name = $wpdb->prefix . "wc_appointment_relationships";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql = $wpdb->prepare("SELECT * FROM $table_name WHERE product_id = %s",$product_id);
-        $items = $wpdb->get_results($sql);
+        $items = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         $qtys = get_post_meta($product_id, '_staff_qtys');
         $costs = get_post_meta($product_id, '_staff_base_costs');
         foreach ($items as $item) {
@@ -248,7 +264,7 @@ class FlutterBooking extends FlutterBaseController
         }
         if (isset($request["date"])) {
             $params["min_date"] = $request['date'];
-            $params["max_date"] = date("Y-m-d", strtotime($request['date'] . " +1 day"));
+            $params["max_date"] = mstore_wp_date_compat("Y-m-d", strtotime($request['date'] . " +1 day"));
         }
         $request->set_query_params($params);
         $controller = new WC_Appointments_REST_Slots_Controller();

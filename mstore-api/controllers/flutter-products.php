@@ -76,7 +76,7 @@ class CUSTOM_WC_REST_Products_Controller extends WC_REST_Products_Controller
         if (!$object || 0 === $object->get_id()) {
             return new WP_Error(
                 "woocommerce_rest_{$this->post_type}_invalid_id",
-                __('Invalid ID.', 'woocommerce'),
+                __('Invalid ID.', 'mstore-api'),
                 array(
                     'status' => 404,
                 )
@@ -86,7 +86,7 @@ class CUSTOM_WC_REST_Products_Controller extends WC_REST_Products_Controller
         if ('variation' === $object->get_type()) {
             return new WP_Error(
                 "woocommerce_rest_invalid_{$this->post_type}_id",
-                __('To manipulate product variations you should use the /products/&lt;product_id&gt;/variations/&lt;id&gt; endpoint.', 'woocommerce'),
+                    __('To manipulate product variations you should use the /products/&lt;product_id&gt;/variations/&lt;id&gt; endpoint.', 'mstore-api'),
                 array(
                     'status' => 404,
                 )
@@ -136,7 +136,7 @@ class CUSTOM_WC_REST_Products_Controller extends WC_REST_Products_Controller
                 return new WP_Error(
                     'woocommerce_rest_trash_not_supported',
                     /* translators: %s: post type */
-                    sprintf(__('The %s does not support trashing.', 'woocommerce'), $this->post_type),
+                    sprintf(__('The %s does not support trashing.', 'mstore-api'), $this->post_type),
                     array(
                         'status' => 501,
                     )
@@ -149,7 +149,7 @@ class CUSTOM_WC_REST_Products_Controller extends WC_REST_Products_Controller
                     return new WP_Error(
                         'woocommerce_rest_already_trashed',
                         /* translators: %s: post type */
-                        sprintf(__('The %s has already been deleted.', 'woocommerce'), $this->post_type),
+                        sprintf(__('The %s has already been deleted.', 'mstore-api'), $this->post_type),
                         array(
                             'status' => 410,
                         )
@@ -165,7 +165,7 @@ class CUSTOM_WC_REST_Products_Controller extends WC_REST_Products_Controller
             return new WP_Error(
                 'woocommerce_rest_cannot_delete',
                 /* translators: %s: post type */
-                sprintf(__('The %s cannot be deleted.', 'woocommerce'), $this->post_type),
+                sprintf(__('The %s cannot be deleted.', 'mstore-api'), $this->post_type),
                 array(
                     'status' => 500,
                 )

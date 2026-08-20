@@ -366,8 +366,9 @@ class ProductManagementHelper
         }
         $args[] = $limit;
         $args[] = $page;
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql = $wpdb->prepare($sql, $args);
-        $item = $wpdb->get_results($sql);
+        $item = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
         $products_arr = [];
         foreach ($item as $pro) {

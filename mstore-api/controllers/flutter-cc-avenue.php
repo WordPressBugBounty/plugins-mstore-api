@@ -1,4 +1,19 @@
 <?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+if ( ! function_exists( 'mstore_wp_date_compat' ) ) {
+    function mstore_wp_date_compat( $format, $timestamp ) {
+        if ( function_exists( 'wp_date' ) ) {
+            return wp_date( $format, $timestamp );
+        }
+
+        return date_i18n( $format, $timestamp );
+    }
+}
+
 require_once(__DIR__ . '/flutter-base.php');
 /*
  * Base REST Controller for flutter
@@ -72,7 +87,7 @@ class FlutterCCAvenue extends FlutterBaseController
             return $key_check;
         }
 
-        $order_id = $order_id.'_'.date("ymds");
+        $order_id = $order_id.'_'.mstore_wp_date_compat("ymds", current_time('timestamp'));
 			
 		$post_data = get_post_meta($order_id,'_post_data',true);
 		update_post_meta($order_id,'_post_data',array());

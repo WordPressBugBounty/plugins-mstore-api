@@ -1,4 +1,9 @@
 <?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 require_once(__DIR__ . '/flutter-base.php');
 
 /*
@@ -132,7 +137,7 @@ class FlutterCheckout extends FlutterBaseController
         if (!$key) {
             return new WP_Error(
                 'missing_key',
-                __('The "key" query parameter is required.', 'text-domain'),
+                __('The "key" query parameter is required.', 'mstore-api'),
                 array('status' => 400)
             );
         }

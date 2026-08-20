@@ -1,4 +1,8 @@
 <?php
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 define("ACTIVE_API", "https://active2.inspireui.com/api/v1/validate");
 define("DEACTIVE_API", "https://active2.inspireui.com/api/v1/deactive");
 define("ACTIVE_TOKEN", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJmb28iOiJiYXIiLCJpYXQiOjE1ODY5NDQ3Mjd9.-umQIC6DuTS_0J0Jj8lcUuUYGjq9OXp3cIM-KquTWX0");
@@ -323,8 +327,9 @@ function sendNewOrderNotificationToDelivery($order_id, $status)
             $sql .= " AND order_id = %s";
             $sql .= " AND is_trashed = 0";
             $sql .= " AND delivery_status = 'pending'";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $order_id);
-            $result = $wpdb->get_results($sql);
+            $result = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
             foreach ($result as $item) {
                 pushNotificationForDeliveryBoy($item->delivery_boy, $title, $message);
@@ -423,7 +428,8 @@ function wcfm_message_on_new_order($order_id)
     $order = wc_get_order($order_id);
 
     // Admin Notification
-    $wcfm_messages = sprintf(__('You have received an Order <b>#%s</b>', 'wc-frontend-manager'), '<a target="_blank" class="wcfm_dashboard_item_title" href="' . get_wcfm_view_order_url($order_id) . '">' . $order->get_order_number() . '</a>');
+    /* translators: %s: linked order number. */
+    $wcfm_messages = sprintf(__('You have received an Order <b>#%s</b>', 'mstore-api'), '<a target="_blank" class="wcfm_dashboard_item_title" href="' . get_wcfm_view_order_url($order_id) . '">' . $order->get_order_number() . '</a>');
     $WCFM->wcfm_notification->wcfm_send_direct_message($author_id, $message_to, $author_is_admin, $author_is_vendor, $wcfm_messages, 'order', apply_filters('wcfm_is_allow_order_notification_email', false));
 
     $order_vendors = array();
@@ -443,9 +449,11 @@ function wcfm_message_on_new_order($order_id)
 
             if ($message_to) {
                 if (apply_filters('wcfm_is_allow_itemwise_notification', true)) {
-                    $wcfm_messages = sprintf(__('You have received an Order <b>#%s</b> for <b>%s</b>', 'wc-frontend-manager'), '<a target="_blank" class="wcfm_dashboard_item_title" href="' . get_wcfm_view_order_url($order_id) . '">' . $order->get_order_number() . '</a>', get_the_title($product_id));
+                    /* translators: 1: linked order number, 2: product title. */
+                    $wcfm_messages = sprintf(__('You have received an Order <b>#%1$s</b> for <b>%2$s</b>', 'mstore-api'), '<a target="_blank" class="wcfm_dashboard_item_title" href="' . get_wcfm_view_order_url($order_id) . '">' . $order->get_order_number() . '</a>', get_the_title($product_id));
                 } elseif (!in_array($message_to, $order_vendors)) {
-                    $wcfm_messages = sprintf(__('You have received an Order <b>#%s</b>', 'wc-frontend-manager'), '<a target="_blank" class="wcfm_dashboard_item_title" href="' . get_wcfm_view_order_url($order_id) . '">' . $order->get_order_number() . '</a>');
+                    /* translators: %s: linked order number. */
+                    $wcfm_messages = sprintf(__('You have received an Order <b>#%s</b>', 'mstore-api'), '<a target="_blank" class="wcfm_dashboard_item_title" href="' . get_wcfm_view_order_url($order_id) . '">' . $order->get_order_number() . '</a>');
                 } else {
                     continue;
                 }
@@ -1288,7 +1296,7 @@ function get_filtered_term_product_counts($request, $taxonomy, $term_ids = [], $
     $query             = apply_filters('woocommerce_get_filtered_term_product_counts_query', $query);
     $query             = implode(' ', $query);
 
-    $term_counts = $wpdb->get_results($query, ARRAY_A);
+    $term_counts = $wpdb->get_results($query, ARRAY_A); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
     $exist_terms_ids = array_column($term_counts, 'term_count_id');
 
@@ -1534,7 +1542,7 @@ function getCommissionOrderResponse($responseData, $vendor_id){
                 WHERE order_id = %d
                 AND `vendor_id` = %d
                 AND `is_refunded` != 1";
-                $order_due = $wpdb->get_results( $wpdb->prepare( $sql, $order_id, $vendor_id ) );
+                $order_due = $wpdb->get_results( $wpdb->prepare( $sql, $order_id, $vendor_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 if( !$order_due || !isset( $order_due[0] ) ){
                     $responseData["vendor_earnings"] = 0;
                     $responseData["admin_fee"] = 0;

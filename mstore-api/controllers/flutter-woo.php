@@ -1,4 +1,8 @@
 <?php
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 require_once(__DIR__ . '/flutter-base.php');
 
 /*
@@ -231,7 +235,7 @@ class FlutterWoo extends FlutterBaseController
         register_rest_route( $this->namespace,  '/products'. '/(?P<id>[\d]+)'.'/check', array(
             'args' => array(
                 'id' => array(
-                    'description' => __('Unique identifier for the resource.', 'woocommerce'),
+                    'description' => __('Unique identifier for the resource.', 'mstore-api'),
                     'type' => 'integer',
                 ),
             ),
@@ -247,7 +251,7 @@ class FlutterWoo extends FlutterBaseController
         register_rest_route( $this->namespace,  '/products'. '/(?P<id>[\d]+)'.'/rating_counts', array(
             'args' => array(
                 'id' => array(
-                    'description' => __('Unique identifier for the resource.', 'woocommerce'),
+                    'description' => __('Unique identifier for the resource.', 'mstore-api'),
                     'type' => 'integer',
                 ),
             ),
@@ -283,7 +287,7 @@ class FlutterWoo extends FlutterBaseController
         register_rest_route($this->namespace, '/products/size-guide' . '/(?P<id>[\d]+)', array(
             'args' => array(
                 'id' => array(
-                    'description' => __('Unique identifier for the resource.', 'woocommerce'),
+                    'description' => __('Unique identifier for the resource.', 'mstore-api'),
                     'type' => 'integer',
                 ),
             ),
@@ -302,11 +306,11 @@ class FlutterWoo extends FlutterBaseController
         global $wpdb;
 
         $sql = "SELECT post_id
-            FROM {$wpdb->prefix}postmeta
-            WHERE meta_key = '%s'
-            AND meta_value = '%s'";
+            FROM {$wpdb->postmeta}
+            WHERE meta_key = %s
+            AND meta_value = %s";
 
-        return $wpdb->get_var($wpdb->prepare($sql, $meta_key, $meta_value));
+        return $wpdb->get_var($wpdb->prepare($sql, $meta_key, $meta_value)); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
     }
 
     function get_data_from_scanner($request){
@@ -394,12 +398,12 @@ class FlutterWoo extends FlutterBaseController
                         $order["line_items"][$i]["meta"] = $order_item->get_meta_data();
                         if (is_plugin_active('wc-frontend-manager-delivery/wc-frontend-manager-delivery.php')) {
                             $table_name = $wpdb->prefix . "wcfm_delivery_orders";
-                            $sql = "SELECT delivery_boy FROM `{$table_name}`";
-                            $sql .= " WHERE 1=1";
-                            $sql .= " AND product_id = %s";
-                            $sql .= " AND order_id = %s";
-                            $sql = $wpdb->prepare($sql, $product_id, $item->order_id);
-                            $users = $wpdb->get_results($sql);
+                            $sql = $wpdb->prepare(
+                                'SELECT delivery_boy FROM `' . esc_sql( $table_name ) . '` WHERE product_id = %d AND order_id = %d',
+                                $product_id,
+                                $item->order_id
+                            );
+                            $users = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
                             if (count($users) > 0) {
                                 $user = get_userdata($users[0]->delivery_boy);
@@ -608,7 +612,7 @@ class FlutterWoo extends FlutterBaseController
 
                 if ($found_in_cart) {
                     /* translators: %s: product name */
-                    throw new Exception(sprintf('<a href="%s" class="button wc-forward">%s</a> %s', wc_get_cart_url(), __('View cart', 'woocommerce'), sprintf(__('You cannot add another "%s" to your cart.', 'woocommerce'), $product_data->get_name())));
+                    throw new Exception(sprintf('<a href="%s" class="button wc-forward">%s</a> %s', wc_get_cart_url(), __('View cart', 'mstore-api'), sprintf(__('You cannot add another "%s" to your cart.', 'mstore-api'), $product_data->get_name())));
                 }
             }
 
@@ -628,12 +632,12 @@ class FlutterWoo extends FlutterBaseController
             // Stock check - only check if we're managing stock and backorders are not allowed.
             if (!$product_data->is_in_stock()) {
                 /* translators: %s: product name */
-                throw new Exception(sprintf(__('You cannot add &quot;%s&quot; to the cart because the product is out of stock.', 'woocommerce'), $product_data->get_name()));
+                throw new Exception(sprintf(__('You cannot add &quot;%s&quot; to the cart because the product is out of stock.', 'mstore-api'), $product_data->get_name()));
             }
 
             if (!$product_data->has_enough_stock($quantity)) {
                 /* translators: 1: product name 2: quantity in stock */
-                throw new Exception(sprintf(__('You cannot add that amount of &quot;%1$s&quot; to the cart because there is not enough stock (%2$s remaining).', 'woocommerce'), $product_data->get_name(), wc_format_stock_quantity_for_display($product_data->get_stock_quantity(), $product_data)));
+                throw new Exception(sprintf(__('You cannot add that amount of &quot;%1$s&quot; to the cart because there is not enough stock (%2$s remaining).', 'mstore-api'), $product_data->get_name(), wc_format_stock_quantity_for_display($product_data->get_stock_quantity(), $product_data)));
             }
 
             // Stock check - this time accounting for whats already in-cart.
@@ -645,9 +649,9 @@ class FlutterWoo extends FlutterBaseController
                         sprintf(
                             '<a href="%s" class="button wc-forward">%s</a> %s',
                             wc_get_cart_url(),
-                            __('View cart', 'woocommerce'),
+                            __('View cart', 'mstore-api'),
                             /* translators: 1: quantity in stock 2: current quantity */
-                            sprintf(__('You cannot add that amount to the cart &mdash; we have %1$s in stock and you already have %2$s in your cart.', 'woocommerce'), wc_format_stock_quantity_for_display($product_data->get_stock_quantity(), $product_data), wc_format_stock_quantity_for_display($products_qty_in_cart[$product_data->get_stock_managed_by_id()], $product_data))
+                            sprintf(__('You cannot add that amount to the cart &mdash; we have %1$s in stock and you already have %2$s in your cart.', 'mstore-api'), wc_format_stock_quantity_for_display($product_data->get_stock_quantity(), $product_data), wc_format_stock_quantity_for_display($products_qty_in_cart[$product_data->get_stock_managed_by_id()], $product_data))
                         )
                     );
                 }
@@ -687,7 +691,7 @@ class FlutterWoo extends FlutterBaseController
 
         } catch (Exception $e) {
             if ($e->getMessage()) {
-                return html_entity_decode(strip_tags($e->getMessage()));
+                return sanitize_text_field(html_entity_decode(wp_strip_all_tags($e->getMessage())));
             }
             return false;
         }
@@ -699,7 +703,8 @@ class FlutterWoo extends FlutterBaseController
             buildCartItemData($products, function($productId, $quantity, $variationId, $attributes, $cart_item_data){
                 $error = $this->add_to_cart($productId, $quantity, $variationId, $attributes, $cart_item_data);
                  if (is_string($error) || $error == false) {
-                    throw new Exception($error);
+                    // phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped
+                    throw new Exception(is_string($error) ? wp_strip_all_tags($error) : '');
                 }
             });
             return true;
@@ -902,7 +907,7 @@ class FlutterWoo extends FlutterBaseController
 
         // Check it can be used with cart.
         if (!$the_coupon->is_valid()) {
-            return parent::sendError("invalid_coupon", html_entity_decode(strip_tags($the_coupon->get_error_message())), 400);
+            return parent::sendError("invalid_coupon", html_entity_decode(wp_strip_all_tags($the_coupon->get_error_message())), 400);
         }
 
         // Check if applied.
@@ -1167,7 +1172,7 @@ class FlutterWoo extends FlutterBaseController
 
             if (WC()->customer->is_customer_outside_base() && !WC()->customer->has_calculated_shipping()) {
                 /* translators: %s location. */
-                $estimated_text = sprintf(esc_html__('(estimated for %s)', 'woocommerce'), WC()->countries->estimated_for_prefix($taxable_address[0]) . WC()->countries->countries[$taxable_address[0]]);
+                $estimated_text = sprintf(esc_html__('(estimated for %s)', 'mstore-api'), WC()->countries->estimated_for_prefix($taxable_address[0]) . WC()->countries->countries[$taxable_address[0]]);
             }
 
             if ('itemized' === get_option('woocommerce_tax_total_display')) {
@@ -1473,6 +1478,10 @@ class FlutterWoo extends FlutterBaseController
 
     public function get_ddates_v2($request)
     {
+        if ( ! function_exists( 'rest_get_server' ) ) {
+            return parent::send_invalid_plugin_error("Your WordPress version does not support REST route inspection required by this API");
+        }
+
         $routes = rest_get_server()->get_routes();
         if (!isset($routes['/orddd/v1/delivery_schedule']) && !isset($routes['/orddd/v1/delivery_schedule/(?P<setting_id>[\\d]+)'])) {
             return parent::send_invalid_plugin_error("You need to install and activate Order Delivery Date Pro for WooCommerce with REST API support to use this api");
@@ -1673,9 +1682,10 @@ class FlutterWoo extends FlutterBaseController
         }
 
         $sql .= " LIMIT %d OFFSET %d";
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql = $wpdb->prepare($sql, $per_page, $offset);
 
-        $items = $wpdb->get_results($sql);
+        $items = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
         if(count($items) > 0){
             $controller = new CUSTOM_WC_REST_Products_Controller();
@@ -1700,14 +1710,14 @@ class FlutterWoo extends FlutterBaseController
     {
         global $wpdb;
 
-        $sql = "SELECT MAX( CAST(meta_value AS UNSIGNED )) max_price, MIN( CAST(meta_value AS UNSIGNED )) min_price FROM {$wpdb->prefix}postmeta WHERE meta_key = '_price' AND post_id IN (
+        $sql = "SELECT MAX( CAST(meta_value AS UNSIGNED )) max_price, MIN( CAST(meta_value AS UNSIGNED )) min_price FROM {$wpdb->postmeta} WHERE meta_key = '_price' AND post_id IN (
             SELECT ID
-            FROM {$wpdb->prefix}posts
+            FROM {$wpdb->posts}
             WHERE post_type = 'product'
             AND post_status = 'publish'
         )";
 
-        $result = $wpdb->get_results($sql);
+        $result = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
         if (count($result) > 0) {
             return $result[0];

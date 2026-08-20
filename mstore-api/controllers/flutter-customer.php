@@ -1,5 +1,9 @@
 <?php
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 class CUSTOM_WC_REST_Customers_Controller extends WC_REST_Customers_Controller
 {
 

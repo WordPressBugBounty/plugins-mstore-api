@@ -3,14 +3,17 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.21.2
+ * Version: 4.21.3
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
+ * License: GPL-2.0-or-later
  *
- * Text Domain: MStore-Api
+ * Text Domain: mstore-api
  */
 
-defined('ABSPATH') or wp_die('No script kiddies please!');
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
 
 
 // use MStoreCheckout\Templates\MDetect;
@@ -96,7 +99,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.21.2';
+    public $version = '4.21.3';
 
     public function __construct()
     {
@@ -216,7 +219,7 @@ class MstoreCheckOut
         if (!function_exists('mv_add_meta_boxes')) {
             function mv_add_meta_boxes()
             {
-                add_meta_box('mv_other_fields', __('Shipping Location', 'woocommerce'), 'mv_add_other_fields_for_packaging', 'shop_order', 'side', 'core');
+                add_meta_box('mv_other_fields', __('Shipping Location', 'mstore-api'), 'mv_add_other_fields_for_packaging', 'shop_order', 'side', 'core');
             }
         }
         // Adding Meta field in the meta container admin shop_order pages
@@ -435,7 +438,7 @@ class MstoreCheckOut
     {
         $nonce = sanitize_text_field($_REQUEST['nonce']);
         if(checkIsAdmin(get_current_user_id()) && wp_verify_nonce($nonce, 'update_delivery_order_message')){
-            $message = sanitize_textarea_field($_REQUEST['message']);
+            $message = sanitize_text_field($_REQUEST['message']);
             update_option("mstore_delivery_order_message", $message);
         }else{
             wp_send_json_error('No Permission',401);
@@ -457,7 +460,7 @@ class MstoreCheckOut
     {
         $nonce = sanitize_text_field($_REQUEST['nonce']);
         if(checkIsAdmin(get_current_user_id()) && wp_verify_nonce($nonce, 'update_delivery_order_unassign_message')){
-            $message = sanitize_textarea_field($_REQUEST['message']);
+            $message = sanitize_text_field($_REQUEST['message']);
             update_option("mstore_delivery_order_unassign_message", $message);
         }else{
             wp_send_json_error('No Permission',401);
@@ -674,7 +677,7 @@ class MstoreCheckOut
     }
 
     function track_delivery_boy_assigned( $order_id, $order_item_id, $wcfm_tracking_data, $product_id, $wcfm_delivery_boy, $wcfm_messages ) {
-        $notification_message = strip_tags($wcfm_messages);
+        $notification_message = wp_strip_all_tags($wcfm_messages);
         $title = "You have new notification";
         pushNotificationForDeliveryBoy($wcfm_delivery_boy, $title, $notification_message);
     }
@@ -685,7 +688,7 @@ class MstoreCheckOut
         if (is_order_received_page()) {
             $detect = new MDetect;
             if ($detect->isMobile()) {
-                wp_register_style('mstore-order-custom-style', plugins_url('assets/css/mstore-order-style.css', MSTORE_PLUGIN_FILE));
+                wp_register_style('mstore-order-custom-style', plugins_url('assets/css/mstore-order-style.css', MSTORE_PLUGIN_FILE), array(), MSTORE_CHECKOUT_VERSION);
                 wp_enqueue_style('mstore-order-custom-style');
             }
         }
@@ -1093,7 +1096,9 @@ function custom_product_review($response, $object, $request)
         $image_arr = array();
         if(!is_string($image_post_ids)){
             foreach( $image_post_ids as $image_post_id ) {
-                $image_arr[] = wp_get_original_image_url( $image_post_id );
+                $image_arr[] = function_exists( 'wp_get_original_image_url' )
+                    ? wp_get_original_image_url( $image_post_id )
+                    : wp_get_attachment_url( $image_post_id );
             }
         }
         $response->data['images'] = $image_arr;
@@ -1333,7 +1338,7 @@ function flutter_prepare_checkout()
 
     // Only parse referer as fallback if $_GET is truly empty (preserves legitimate query args)
     if (!$has_checkout_params && empty($_GET) && isset($_SERVER['HTTP_REFERER'])) {
-        $url_components = parse_url($_SERVER['HTTP_REFERER']);
+        $url_components = wp_parse_url($_SERVER['HTTP_REFERER']);
         if (isset($url_components['query'])) {
             parse_str($url_components['query'], $params);
             // Extract only the checkout-related keys from referer; don't overwrite all $_GET
@@ -1356,8 +1361,9 @@ function flutter_prepare_checkout()
         $code = sanitize_text_field($_GET['code']);
         global $wpdb;
         $table_name = $wpdb->prefix . "mstore_checkout";
-        $sql = $wpdb->prepare("SELECT * FROM $table_name WHERE code = %s", $code);
-        $item = $wpdb->get_row($sql);
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+        $sql = $wpdb->prepare( 'SELECT * FROM `' . esc_sql( $table_name ) . '` WHERE code = %s', $code );
+        $item = $wpdb->get_row($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         if ($item) {
             $data = json_decode(urldecode(base64_decode($item->order)), true);
         } else {
@@ -1711,12 +1717,13 @@ function custom_woocommerce_rest_prepare_shop_order_object($response)
 function mstore_register_order_refund_requested_order_status()
 {
     register_post_status('wc-refund-req', array(
-        'label' => esc_attr__('Refund Requested'),
+        'label' => esc_attr__('Refund Requested', 'mstore-api'),
         'public' => true,
         'show_in_admin_status_list' => true,
         'show_in_admin_all_list' => true,
         'exclude_from_search' => false,
-        'label_count' => _n_noop('Refund requested <span class="count">(%s)</span>', 'Refund requested <span class="count">(%s)</span>')
+        /* translators: %s: number of orders with refund requested status. */
+        'label_count' => _n_noop('Refund requested <span class="count">(%s)</span>', 'Refund requested <span class="count">(%s)</span>', 'mstore-api')
     ));
 }
 
@@ -1733,7 +1740,7 @@ function mstore_add_custom_order_statuses($order_statuses)
         $new_order_statuses[$key] = $status;
         // Add our custom statuses.
         if ('wc-processing' === $key) {
-            $new_order_statuses['wc-refund-req'] = esc_attr__('Refund Requested');
+            $new_order_statuses['wc-refund-req'] = esc_attr__('Refund Requested', 'mstore-api');
         }
     }
 
@@ -1746,7 +1753,7 @@ add_filter('wc_order_statuses', 'mstore_add_custom_order_statuses');
 function custom_status_bulk_edit($actions)
 {
     // Add order status changes.
-    $actions['mark_refund-req'] = __('Change status to refund requested');
+    $actions['mark_refund-req'] = __('Change status to refund requested', 'mstore-api');
 
     return $actions;
 }

@@ -1,5 +1,9 @@
 <?php
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 class FlutterMultiVendor
 {
 
@@ -42,7 +46,7 @@ class FlutterMultiVendor
         register_rest_route($this->namespace, '/product' . '/(?P<id>[\d]+)/', array(
             'args' => array(
                 'id' => array(
-                    'description' => __('Unique identifier for the resource.', 'woocommerce'),
+                    'description' => __('Unique identifier for the resource.', 'mstore-api'),
                     'type' => 'integer',
                 )
             ),
@@ -80,7 +84,7 @@ class FlutterMultiVendor
         register_rest_route($this->namespace, '/wcfm-stores' . '/(?P<id>[\d]+)/', array(
             'args' => array(
                 'id' => array(
-                    'description' => __('Unique identifier for the object.', 'wcfm-marketplace-rest-api'),
+                    'description' => __('Unique identifier for the object.', 'mstore-api'),
                     'type' => 'integer',
                 )
             ),
@@ -168,16 +172,16 @@ class FlutterMultiVendor
         $params = array(
             'media_attachment' => array(
                 'required' => true,
-                'description' => __('Image encoded as base64.', 'image-from-base64'),
+                'description' => __('Image encoded as base64.', 'mstore-api'),
                 'type' => 'string'
             ),
             'title' => array(
                 'required' => true,
-                'description' => __('The title for the object.', 'image-from-base64'),
+                'description' => __('The title for the object.', 'mstore-api'),
                 'type' => 'json'
             ),
             'media_path' => array(
-                'description' => __('Path to directory where file will be uploaded.', 'image-from-base64'),
+                'description' => __('Path to directory where file will be uploaded.', 'mstore-api'),
                 'type' => 'string'
             )
         );

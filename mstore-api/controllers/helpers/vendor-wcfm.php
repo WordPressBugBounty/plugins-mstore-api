@@ -255,11 +255,11 @@ class FlutterWCFMHelper
                         if ($is_free == 'yes') {
                             $wcfm_vendors_json_arr['membership_details']['membership_expiry_on'] = date_i18n(wc_date_format(), $next_schedule);
                         } else {
-                            $wcfm_vendors_json_arr['membership_details']['membership_expiry_on'] = __('Never Expire', 'wc-frontend-manager');
+                            $wcfm_vendors_json_arr['membership_details']['membership_expiry_on'] = __('Never Expire', 'mstore-api');
                         }
                     }
                 } else {
-                    $wcfm_vendors_json_arr['membership_details']['membership_expiry_on'] = __('Never Expire', 'wc-frontend-manager');
+                    $wcfm_vendors_json_arr['membership_details']['membership_expiry_on'] = __('Never Expire', 'mstore-api');
                 }
             }
         }
@@ -361,7 +361,8 @@ class FlutterWCFMHelper
         if (wcfm_is_vendor()) {
             $shop_name = wcfm_get_vendor_store(absint($user_id));
         }
-        $wcfm_messages = sprintf(__('Order status updated to <b>%s</b> by <b>%s</b>', 'wc-frontend-manager'), wc_get_order_status_name(str_replace('wc-', '', $order_status)), $shop_name);
+        /* translators: 1: order status label, 2: shop name. */
+        $wcfm_messages = sprintf(__('Order status updated to <b>%1$s</b> by <b>%2$s</b>', 'mstore-api'), wc_get_order_status_name(str_replace('wc-', '', $order_status)), $shop_name);
         $is_customer_note = apply_filters('wcfm_is_allow_order_update_note_for_customer', '1');
 
         if (wcfm_is_vendor($user_id)) add_filter('woocommerce_new_order_note_data', array($WCFM->wcfm_marketplace, 'wcfm_update_comment_vendor'), 10, 2);
@@ -371,7 +372,8 @@ class FlutterWCFMHelper
         }
         if (wcfm_is_vendor($user_id)) remove_filter('woocommerce_new_order_note_data', array($WCFM->wcfm_marketplace, 'wcfm_update_comment_vendor'), 10, 2);
 
-        $wcfm_messages = sprintf(__('<b>%s</b> order status updated to <b>%s</b> by <b>%s</b>', 'wc-frontend-manager'), '#<a target="_blank" class="wcfm_dashboard_item_title" href="' . get_wcfm_view_order_url($order_id) . '">' . $order->get_order_number() . '</a>', wc_get_order_status_name(str_replace('wc-', '', $order_status)), $shop_name);
+        /* translators: 1: linked order number, 2: order status label, 3: shop name. */
+        $wcfm_messages = sprintf(__('<b>%1$s</b> order status updated to <b>%2$s</b> by <b>%3$s</b>', 'mstore-api'), '#<a target="_blank" class="wcfm_dashboard_item_title" href="' . get_wcfm_view_order_url($order_id) . '">' . $order->get_order_number() . '</a>', wc_get_order_status_name(str_replace('wc-', '', $order_status)), $shop_name);
         $WCFM->wcfm_notification->wcfm_send_direct_message(-2, 0, 1, 0, $wcfm_messages, 'status-update');
 
         do_action('woocommerce_order_edit_status', $order_id, $order_status);
@@ -411,8 +413,9 @@ class FlutterWCFMHelper
         $sql .= $reviews_vendor_filter;
         $sql .= $status_filter;
 
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql = $wpdb->prepare($sql, $vendor_id);
-        $wcfm_review_items = $wpdb->get_var($sql);
+        $wcfm_review_items = $wpdb->get_var($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         if (!$wcfm_review_items) $wcfm_review_items = 0;
 
         $sql = "SELECT * from {$wpdb->prefix}wcfm_marketplace_reviews";
@@ -423,8 +426,9 @@ class FlutterWCFMHelper
         $sql .= " LIMIT %d";
         $sql .= " OFFSET %d";
 
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql = $wpdb->prepare($sql, $vendor_id, $the_orderby, $the_order, $length, $offset);
-        $wcfm_reviews_array = $wpdb->get_results($sql);
+        $wcfm_reviews_array = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         return new WP_REST_Response(array(
             'status' => 'success',
             'response' => $wcfm_reviews_array
@@ -444,12 +448,14 @@ class FlutterWCFMHelper
 
         if ($reviewid) {
             $sql = "SELECT * FROM {$wpdb->prefix}wcfm_marketplace_reviews WHERE `ID`= %s";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $reviewid);
-            $review_data = $wpdb->get_row($sql);
+            $review_data = $wpdb->get_row($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
             $sql = "SELECT * FROM {$wpdb->prefix}wcfm_marketplace_review_rating_meta WHERE `type` = 'rating_category' AND `review_id`= %s ORDER BY ID ASC";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $reviewid);
-            $review_meta = $wpdb->get_results($sql);
+            $review_meta = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             if ($review_data && !empty($review_data) && is_object($review_data)) {
                 if ($status) { // On Approve
                     $total_review_count = get_user_meta($review_data->vendor_id, '_wcfmmp_total_review_count', true);
@@ -498,7 +504,13 @@ class FlutterWCFMHelper
                     update_user_meta($review_data->vendor_id, '_wcfmmp_last_author_id', $review_data->author_id);
                     update_user_meta($review_data->vendor_id, '_wcfmmp_last_author_name', $review_data->author_name);
 
-                    $wpdb->update("{$wpdb->prefix}wcfm_marketplace_reviews", array('approved' => 1), array('ID' => $reviewid), array('%d'), array('%d'));
+                    $wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+                        "{$wpdb->prefix}wcfm_marketplace_reviews",
+                        array('approved' => 1),
+                        array('ID' => $reviewid),
+                        array('%d'),
+                        array('%d')
+                    );
                 } else { // On UnApprove
                     $total_review_count = get_user_meta($review_data->vendor_id, '_wcfmmp_total_review_count', true);
                     if (!$total_review_count) $total_review_count = 0;
@@ -544,7 +556,13 @@ class FlutterWCFMHelper
                     }
                     $category_review_rating = update_user_meta($review_data->vendor_id, '_wcfmmp_category_review_rating', $category_review_rating);
 
-                    $wpdb->update("{$wpdb->prefix}wcfm_marketplace_reviews", array('approved' => 0), array('ID' => $reviewid), array('%d'), array('%d'));
+                    $wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+                        "{$wpdb->prefix}wcfm_marketplace_reviews",
+                        array('approved' => 0),
+                        array('ID' => $reviewid),
+                        array('%d'),
+                        array('%d')
+                    );
                 }
             }
         }
@@ -616,8 +634,9 @@ class FlutterWCFMHelper
             if ($order_id) {
                 $args[] = $order_id;
             }
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $args);
-            $gross_sales_whole_week = $wpdb->get_results($sql);
+            $gross_sales_whole_week = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             if (!empty($gross_sales_whole_week)) {
                 foreach ($gross_sales_whole_week as $net_sale_whole_week) {
                     if ($net_sale_whole_week->order_id) {
@@ -694,8 +713,9 @@ class FlutterWCFMHelper
             if ($order_id) {
                 $args[] = $order_id;
             }
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $args);
-            $gross_sales_whole_week = $wpdb->get_results($sql);
+            $gross_sales_whole_week = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             if (!empty($gross_sales_whole_week)) {
                 foreach ($gross_sales_whole_week as $net_sale_whole_week) {
                     if ($net_sale_whole_week->order_item_id) {
@@ -737,8 +757,9 @@ class FlutterWCFMHelper
             if ($order_id) {
                 $args[] = $order_id;
             }
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $args);
-            $total_sales = $wpdb->get_results($sql);
+            $total_sales = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             if (!empty($total_sales)) {
                 foreach ($total_sales as $total_sale) {
                     $gross_sales = $total_sale->total_product_amount + $total_sale->product_shipping_amount + $total_sale->product_shipping_tax_amount + $total_sale->product_tax_amount;
@@ -763,8 +784,9 @@ class FlutterWCFMHelper
             if ($order_id) {
                 $args[] = $order_id;
             }
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $args);
-            $total_sales = $wpdb->get_results($sql);
+            $total_sales = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             if (!empty($total_sales)) {
                 foreach ($total_sales as $total_sale) {
                     $gross_sales = $total_sale->total_order_amount;
@@ -795,8 +817,9 @@ class FlutterWCFMHelper
             if ($order_id) {
                 $args[] = $order_id;
             }
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $args);
-            $gross_sales_whole_week = $wpdb->get_results($sql);
+            $gross_sales_whole_week = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $gross_commission_ids = array();
             $gross_total_refund_amount = 0;
             if (!empty($gross_sales_whole_week)) {
@@ -890,11 +913,13 @@ class FlutterWCFMHelper
                 $sql = $this->wcfm_query_time_range_filter($sql, 'date', $interval, $filter_date_form, $filter_date_to, 'withdraw');
 
                 if ($vendor_id) {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                     $sql = $wpdb->prepare($sql, $vendor_id);
                 } else {
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                     $sql = $wpdb->prepare($sql);
                 }
-                $total_commissions = $wpdb->get_results($sql);
+                $total_commissions = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
                 $commission = 0;
                 if (!empty($total_commissions)) {
                     foreach ($total_commissions as $total_commission) {
@@ -954,8 +979,9 @@ class FlutterWCFMHelper
         if ($order_id) {
             $args[] = $order_id;
         }
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql = $wpdb->prepare($sql, $args);
-        $total_commissions = $wpdb->get_results($sql);
+        $total_commissions = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         $commission = 0;
         if (!empty($total_commissions)) {
             foreach ($total_commissions as $total_commission) {
@@ -1013,8 +1039,9 @@ class FlutterWCFMHelper
             $sql .= " ORDER BY wcfm_messages.`ID` DESC";
             $sql .= " LIMIT %d";
             $sql .= " OFFSET %d";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $message_to, $message_to, $message_to, $limit, $offset);
-            $wcfm_messages = $wpdb->get_results($sql);
+            $wcfm_messages = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
             foreach ($wcfm_messages as $wcfm_message) {
                 unset(
@@ -1028,7 +1055,7 @@ class FlutterWCFMHelper
                     $wcfm_message->is_pined,
                     $wcfm_message->message_to
                 );
-                $wcfm_message->message = strip_tags($wcfm_message->message);
+                $wcfm_message->message = wp_strip_all_tags($wcfm_message->message);
             }
             return $wcfm_messages;
         }
@@ -1115,15 +1142,17 @@ class FlutterWCFMHelper
                 $sql .= "LEFT JOIN {$postmeta_table} pm ON p.ID = pm.post_id ";
                 $sql .= "WHERE p.post_type = 'product' AND p.post_status = 'publish' ";
                 $sql .= "AND (p.post_author = %d OR (pm.meta_key IN ('_dokan_vendor_id', 'dokan_vendor_id') AND pm.meta_value = %d))";
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 $sql = $wpdb->prepare($sql, $store_id, $store_id);
             } else {
                 $sql = "SELECT p.ID FROM {$table_name} p ";
                 $sql .= "WHERE p.post_type = 'product' AND p.post_status = 'publish' ";
                 $sql .= "AND p.post_author = %d";
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 $sql = $wpdb->prepare($sql, $store_id);
             }
 
-            $product_ids = $wpdb->get_col($sql);
+            $product_ids = $wpdb->get_col($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
             $products = array();
             foreach ((array)$product_ids as $product_id) {
@@ -1178,8 +1207,9 @@ class FlutterWCFMHelper
                 $sql_terms = "SELECT DISTINCT tt.term_id FROM {$wpdb->term_relationships} tr ";
                 $sql_terms .= "INNER JOIN {$wpdb->term_taxonomy} tt ON tr.term_taxonomy_id = tt.term_taxonomy_id ";
                 $sql_terms .= "WHERE tt.taxonomy = 'product_cat' AND tr.object_id IN ({$placeholders})";
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 $sql_terms = $wpdb->prepare($sql_terms, $product_ids);
-                $raw_category_ids = array_map('absint', (array)$wpdb->get_col($sql_terms));
+                $raw_category_ids = array_map('absint', (array)$wpdb->get_col($sql_terms)); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
                 if (!empty($raw_category_ids)) {
                     $categoryIds = array_values(array_unique(array_merge($categoryIds, $raw_category_ids)));
                 }
@@ -1244,8 +1274,8 @@ class FlutterWCFMHelper
 
 
             while ($end_time > $next_time_slot) {
-                $week_date = date('Y-m-d', $next_time_slot);
-                $weekday = date('N', $next_time_slot);
+                $week_date = date_i18n('Y-m-d', $next_time_slot);
+                $weekday = date_i18n('N', $next_time_slot);
                 $weekday -= 1;
                 if (!empty($wcfm_delivery_time_off_days)) {
                     if (in_array($weekday, $wcfm_delivery_time_off_days)) {

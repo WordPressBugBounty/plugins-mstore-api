@@ -1,5 +1,19 @@
 <?php
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+if ( ! function_exists( 'mstore_wp_date_compat' ) ) {
+    function mstore_wp_date_compat( $format, $timestamp ) {
+        if ( function_exists( 'wp_date' ) ) {
+            return wp_date( $format, $timestamp );
+        }
+
+        return date_i18n( $format, $timestamp );
+    }
+}
+
 class VendorAdminWooHelper
 {
 
@@ -245,8 +259,9 @@ class VendorAdminWooHelper
         }
         $args[] = $per_page;
         $args[] = $page;
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql = $wpdb->prepare($sql, $args);
-        $query = $wpdb->get_results($sql);
+        $query = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         // Loop through each order post object
         foreach ($query as $item) {
             $order = wc_get_order($item->ID);
@@ -355,10 +370,10 @@ class VendorAdminWooHelper
         // WooCommerce Admin Report
         $wc_report = new WC_Admin_Report();
 
-        // Set date parameters for the current month
+            // Set date parameters for the current month
         switch ($interval) {
             case 'year':
-                $start_date = strtotime(date('Y-m', current_time('timestamp')) . '-01 midnight');
+                $start_date = strtotime(mstore_wp_date_compat('Y-m', current_time('timestamp')) . '-01 midnight');
                 $end_date = strtotime('-1year', $start_date) - 86400;
                 $wc_report->start_date = $end_date;
                 $wc_report->end_date = $start_date;
@@ -378,7 +393,7 @@ class VendorAdminWooHelper
             case 'custom':
                 break;
             case 'all':
-                $start_date = strtotime(date('Y-m', current_time('timestamp')) . '-01 midnight');
+                $start_date = strtotime(mstore_wp_date_compat('Y-m', current_time('timestamp')) . '-01 midnight');
                 $end_date = strtotime('-10year', $start_date) - 86400;
                 $wc_report->start_date = $end_date;
                 $wc_report->end_date = $start_date;
@@ -477,14 +492,14 @@ class VendorAdminWooHelper
         $wc_report = new WC_Admin_Report();
 
         // Set date parameters for the current month
-        $start_date = strtotime(date('Y-m', current_time('timestamp')) . '-01 midnight');
+        $start_date = strtotime(mstore_wp_date_compat('Y-m', current_time('timestamp')) . '-01 midnight');
         $end_date = strtotime('-1month', $start_date) - 86400;
         $wc_report->start_date = $end_date;
         $wc_report->end_date = $start_date;
 
         switch ($interval) {
             case 'year':
-                $start_date = strtotime(date('Y-m', current_time('timestamp')) . '-01 midnight');
+                $start_date = strtotime(mstore_wp_date_compat('Y-m', current_time('timestamp')) . '-01 midnight');
                 $end_date = strtotime('-1year', $start_date) - 86400;
                 $wc_report->start_date = $end_date;
                 $wc_report->end_date = $start_date;
@@ -504,7 +519,7 @@ class VendorAdminWooHelper
             case 'custom':
                 break;
             case 'all':
-                $start_date = strtotime(date('Y-m', current_time('timestamp')) . '-01 midnight');
+                $start_date = strtotime(mstore_wp_date_compat('Y-m', current_time('timestamp')) . '-01 midnight');
                 $end_date = strtotime('-10year', $start_date) - 86400;
                 $wc_report->start_date = $end_date;
                 $wc_report->end_date = $start_date;
@@ -928,8 +943,8 @@ class VendorAdminWooHelper
                         $image_arr[] = $image[0];
                     }
                 }
-                $p['description'] = strip_tags($p['description']);
-                $p['short_description'] = strip_tags($p['short_description']);
+                $p['description'] = wp_strip_all_tags($p['description']);
+                $p['short_description'] = wp_strip_all_tags($p['short_description']);
                 $p['images'] = $image_arr;
                 $p['variable_id'] = $variable_ids;
                 $image = wp_get_attachment_image_src($p['image_id'], 'full');
@@ -1117,10 +1132,10 @@ class VendorAdminWooHelper
             // Description
             if (isset($description)) {
 
-                $product->set_description(strip_tags($description));
+                $product->set_description(wp_strip_all_tags($description));
             }
             if (isset($short_description)) {
-                $product->set_short_description(strip_tags($short_description));
+                $product->set_short_description(wp_strip_all_tags($short_description));
             }
 
             // Stock status.
@@ -1281,8 +1296,8 @@ class VendorAdminWooHelper
                     $image_arr[] = $image[0];
                 }
             }
-            $p['description'] = strip_tags($p['description']);
-            $p['short_description'] = strip_tags($p['short_description']);
+            $p['description'] = wp_strip_all_tags($p['description']);
+            $p['short_description'] = wp_strip_all_tags($p['short_description']);
             $p['images'] = $image_arr;
             $image = wp_get_attachment_image_src($p['image_id'], 'full');
             if (!is_null($image[0])) {
@@ -1358,4 +1373,3 @@ class VendorAdminWooHelper
         ), 200);
     }
 }
-

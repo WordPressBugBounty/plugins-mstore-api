@@ -1,4 +1,8 @@
 <?php
+
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
 require_once(__DIR__ . '/helpers/delivery-wcfm-helper.php');
 require_once(__DIR__ . '/helpers/delivery-woo-helper.php');
 
@@ -331,4 +335,3 @@ class FlutterDelivery extends FlutterBaseController
 }
 
 new FlutterDelivery;
-

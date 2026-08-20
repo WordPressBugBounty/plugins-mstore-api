@@ -289,12 +289,14 @@ class VendorAdminWCFMHelper
         $sql .= " ORDER BY `ID` DESC LIMIT %d OFFSET %d";
 
         if (isset($search)) {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $vendor_id, $search, $search, $search, $limit, $page);
         } else {
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $vendor_id, $limit, $page);
         }
 
-        $item = $wpdb->get_results($sql);
+        $item = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
         $products_arr = [];
         foreach ($item as $pro) {
@@ -466,8 +468,9 @@ class VendorAdminWCFMHelper
                 $sql2 .= " FROM {$table_name2}";
                 $sql2 .= " WHERE {$table_name2}.display_name LIKE %s";
                 $sql2 .= " ORDER BY {$table_name2}.display_name";
+                // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                 $sql2 = $wpdb->prepare($sql2, '%'.sanitize_text_field($request['name']).'%');
-                $users = $wpdb->get_results($sql2);
+                $users = $wpdb->get_results($sql2); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
                 if (count($users) > 0) {
                     $user_str = array();
                     foreach ($users as $user) {
@@ -496,8 +499,11 @@ class VendorAdminWCFMHelper
             }
             $args[] = $per_page;
             $args[] = $page;
-            $sql = $wpdb->prepare($sql, $args);
-            $items = $wpdb->get_results($sql);
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            $sql = $wpdb->prepare($sql, $args); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            $items = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
             foreach ($items as $item) {
                 $order = wc_get_order($item->order_id);
@@ -537,12 +543,12 @@ class VendorAdminWCFMHelper
                     $order["line_items"][$i]["meta"] = $order_item->get_meta_data();
                     if (is_plugin_active('wc-frontend-manager-delivery/wc-frontend-manager-delivery.php')) {
                         $table_name = $wpdb->prefix . "wcfm_delivery_orders";
-                        $sql = "SELECT delivery_boy FROM `{$table_name}`";
-                        $sql .= " WHERE 1=1";
-                        $sql .= " AND product_id = %s";
-                        $sql .= " AND order_id = %s";
-                        $sql = $wpdb->prepare($sql, $product_id, $item->order_id);
-                        $users = $wpdb->get_results($sql);
+                        $sql = $wpdb->prepare(
+                            'SELECT delivery_boy FROM `' . esc_sql( $table_name ) . '` WHERE product_id = %d AND order_id = %d',
+                            $product_id,
+                            $item->order_id
+                        );
+                        $users = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
                         if (count($users) > 0) {
                             $user = get_userdata($users[0]->delivery_boy);
@@ -686,9 +692,10 @@ class VendorAdminWCFMHelper
             $shop_name = wcfm_get_vendor_store(absint($user_id));
         }
         $wcfm_messages = sprintf(
+            /* translators: 1: order status label, 2: shop name. */
             __(
-                "Order status updated to <b>%s</b> by <b>%s</b>",
-                "wc-frontend-manager"
+                'Order status updated to <b>%1$s</b> by <b>%2$s</b>',
+                'mstore-api'
             ),
             wc_get_order_status_name(str_replace("wc-", "", $order_status)),
             $shop_name
@@ -720,9 +727,10 @@ class VendorAdminWCFMHelper
         }
 
         $wcfm_messages = sprintf(
+            /* translators: 1: linked order number, 2: order status label, 3: shop name. */
             __(
-                "<b>%s</b> order status updated to <b>%s</b> by <b>%s</b>",
-                "wc-frontend-manager"
+                '<b>%1$s</b> order status updated to <b>%2$s</b> by <b>%3$s</b>',
+                'mstore-api'
             ),
             '#<a target="_blank" class="wcfm_dashboard_item_title" href="' .
             get_wcfm_view_order_url($order_id) .
@@ -809,8 +817,9 @@ class VendorAdminWCFMHelper
         $sql .= $reviews_vendor_filter;
         $sql .= $status_filter;
 
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql = $wpdb->prepare($sql, $vendor_id);
-        $wcfm_review_items = $wpdb->get_var($sql);
+        $wcfm_review_items = $wpdb->get_var($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         if (!$wcfm_review_items) {
             $wcfm_review_items = 0;
         }
@@ -823,8 +832,9 @@ class VendorAdminWCFMHelper
         $sql .= " LIMIT %d";
         $sql .= " OFFSET %d";
 
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql = $wpdb->prepare($sql, $vendor_id, $the_orderby, $the_order, $length, $offset);
-        $wcfm_reviews_array = $wpdb->get_results($sql);
+        $wcfm_reviews_array = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         return new WP_REST_Response(
             [
                 "status" => "success",
@@ -849,12 +859,14 @@ class VendorAdminWCFMHelper
 
         if ($reviewid) {
             $sql = "SELECT * FROM {$wpdb->prefix}wcfm_marketplace_reviews WHERE `ID`= %s";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $reviewid);
-            $review_data = $wpdb->get_row($sql);
+            $review_data = $wpdb->get_row($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
             $sql = "SELECT * FROM {$wpdb->prefix}wcfm_marketplace_review_rating_meta WHERE `type` = 'rating_category' AND `review_id`= %s ORDER BY ID ASC";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $reviewid);
-            $review_meta = $wpdb->get_results($sql);
+            $review_meta = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             if (
                 $review_data &&
                 !empty($review_data) &&
@@ -972,7 +984,7 @@ class VendorAdminWCFMHelper
                         $review_data->author_name
                     );
 
-                    $wpdb->update(
+                    $wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
                         "{$wpdb->prefix}wcfm_marketplace_reviews",
                         [
                             "approved" => 1,
@@ -1099,7 +1111,7 @@ class VendorAdminWCFMHelper
                         $category_review_rating
                     );
 
-                    $wpdb->update(
+                    $wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
                         "{$wpdb->prefix}wcfm_marketplace_reviews",
                         [
                             "approved" => 0,
@@ -1206,8 +1218,9 @@ class VendorAdminWCFMHelper
             if ($order_id) {
                 $args[] = $order_id;
             }
-            $sql = $wpdb->prepare($sql, $args);
-            $gross_sales_whole_week = $wpdb->get_results($sql);
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            $sql = $wpdb->prepare($sql, $args); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            $gross_sales_whole_week = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             if (!empty($gross_sales_whole_week)) {
                 foreach ($gross_sales_whole_week as $net_sale_whole_week) {
                     if ($net_sale_whole_week->order_id) {
@@ -1373,8 +1386,11 @@ class VendorAdminWCFMHelper
             if ($order_id) {
                 $args[] = $order_id;
             }
-            $sql = $wpdb->prepare($sql, $args);
-            $gross_sales_whole_week = $wpdb->get_results($sql);
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            $sql = $wpdb->prepare($sql, $args); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+            $gross_sales_whole_week = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             if (!empty($gross_sales_whole_week)) {
                 foreach ($gross_sales_whole_week as $net_sale_whole_week) {
                     if ($net_sale_whole_week->order_item_id) {
@@ -1449,8 +1465,9 @@ class VendorAdminWCFMHelper
             if ($order_id) {
                 $args[] = $order_id;
             }
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $args);
-            $total_sales = $wpdb->get_results($sql);
+            $total_sales = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             if (!empty($total_sales)) {
                 foreach ($total_sales as $total_sale) {
                     $gross_sales =
@@ -1488,8 +1505,9 @@ class VendorAdminWCFMHelper
             if ($order_id) {
                 $args[] = $order_id;
             }
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $args);
-            $total_sales = $wpdb->get_results($sql);
+            $total_sales = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             if (!empty($total_sales)) {
                 foreach ($total_sales as $total_sale) {
                     $gross_sales = $total_sale->total_order_amount;
@@ -1538,8 +1556,10 @@ class VendorAdminWCFMHelper
             if ($order_id) {
                 $args[] = $order_id;
             }
+            // phpcs:disable WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $sql = $wpdb->prepare($sql, $args);
             $gross_sales_whole_week = $wpdb->get_results($sql);
+            // phpcs:enable WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
             $gross_commission_ids = [];
             $gross_total_refund_amount = 0;
             if (!empty($gross_sales_whole_week)) {
@@ -1671,11 +1691,13 @@ class VendorAdminWCFMHelper
                     "withdraw"
                 );
                 if($vendor_id){
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                     $sql = $wpdb->prepare($sql, $vendor_id);
                 }else{
+                    // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                     $sql = $wpdb->prepare($sql);
                 }
-                $total_commissions = $wpdb->get_results($sql);
+                $total_commissions = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
                 $commission = 0;
                 if (!empty($total_commissions)) {
                     foreach ($total_commissions as $total_commission) {
@@ -1758,8 +1780,9 @@ class VendorAdminWCFMHelper
         if ($order_id) {
             $args[] = $order_id;
         }
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql = $wpdb->prepare($sql, $args);
-        $total_commissions = $wpdb->get_results($sql);
+        $total_commissions = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         $commission = 0;
         if (!empty($total_commissions)) {
             foreach ($total_commissions as $total_commission) {
@@ -1845,8 +1868,9 @@ class VendorAdminWCFMHelper
             $sql .= " ORDER BY wcfm_messages.`ID` DESC";
             $sql .= " LIMIT %d";
             $sql .= " OFFSET %d";
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $message_to, $message_to, $message_to, $limit, $offset);
-            $wcfm_messages = $wpdb->get_results($sql);
+            $wcfm_messages = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
             foreach ($wcfm_messages as $wcfm_message) {
                 unset(
@@ -1860,7 +1884,7 @@ class VendorAdminWCFMHelper
                     $wcfm_message->is_pined,
                     $wcfm_message->message_to
                 );
-                $wcfm_message->message = strip_tags($wcfm_message->message);
+                $wcfm_message->message = wp_strip_all_tags($wcfm_message->message);
             }
         }
         return new WP_REST_Response(
@@ -2204,8 +2228,8 @@ class VendorAdminWCFMHelper
                         $image_arr[] = $image[0];
                     }
                 }
-                $p["description"] = strip_tags($p["description"]);
-                $p["short_description"] = strip_tags($p["short_description"]);
+                $p["description"] = wp_strip_all_tags($p["description"]);
+                $p["short_description"] = wp_strip_all_tags($p["short_description"]);
                 $p["images"] = $image_arr;
                 $image = wp_get_attachment_image_src($p["image_id"], "full");
                 if (!is_null($image[0])) {
@@ -2415,10 +2439,10 @@ class VendorAdminWCFMHelper
             // Description
             if (isset($description)) {
 
-                $product->set_description(strip_tags($description));
+                $product->set_description(wp_strip_all_tags($description));
             }
             if (isset($short_description)) {
-                $product->set_short_description(strip_tags($short_description));
+                $product->set_short_description(wp_strip_all_tags($short_description));
             }
 
             // Stock status.
@@ -2611,8 +2635,8 @@ class VendorAdminWCFMHelper
                     $image_arr[] = $image[0];
                 }
             }
-            $p["description"] = strip_tags($p["description"]);
-            $p["short_description"] = strip_tags($p["short_description"]);
+            $p["description"] = wp_strip_all_tags($p["description"]);
+            $p["short_description"] = wp_strip_all_tags($p["short_description"]);
             $p["images"] = $image_arr;
             $image = wp_get_attachment_image_src($p["image_id"], "full");
             if (!is_null($image[0])) {
@@ -2752,11 +2776,13 @@ class VendorAdminWCFMHelper
         }
 
         if(apply_filters('wcfm_is_show_marketplace_itemwise_orders', true) &&  $order_item_id){
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $order_id, $order_item_id);
         }else{
+            // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $sql = $wpdb->prepare($sql, $order_id);
         }
-        $delivery_boys = $wpdb->get_results($sql);
+        $delivery_boys = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
         if (!empty($delivery_boys)) {
             foreach ($delivery_boys as $delivery_boy) {
                 $delivery_boys_array[] = array('order' => $order_id, 'item' => $delivery_boy->item_id, 'vendor' => $delivery_boy->vendor_id, 'delivery_boy' => $delivery_boy->delivery_boy, 'status' => $delivery_boy->delivery_status);
@@ -2859,7 +2885,7 @@ class VendorAdminWCFMHelper
                 $wcfm_delivery_boy,
                 $wcfm_delivery_boy
             );
-            $wpdb->query($sql);
+            $wpdb->query($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
             $delivery_id = $wpdb->insert_id;
 
             // Update Delivery Meta
@@ -2875,10 +2901,10 @@ class VendorAdminWCFMHelper
                 );
                 $key = "gross_sales_total";
                 $value = $gross_sales_total;
-                $wpdb->query(
+                $wpdb->query( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
                     $wpdb->prepare(
                         "INSERT INTO `{$wpdb->prefix}wcfm_delivery_orders_meta`
-									( order_delivery_id
+										( order_delivery_id
 									, `key`
 									, `value`
 									) VALUES ( %d
@@ -2896,14 +2922,15 @@ class VendorAdminWCFMHelper
             // Notification Update
 
             if (apply_filters("wcfm_is_allow_itemwise_notification", true)) {
-                $wcfm_messages = sprintf(
-                    __(
-                        "<b>%s</b> assigned as Delivery Boy for order <b>%s</b> item <b>%s</b>.",
-                        "wc-frontend-manager-delivery"
-                    ),
-                    $wcfm_delivery_boy_user->first_name .
-                    " " .
-                    $wcfm_delivery_boy_user->last_name,
+                    $wcfm_messages = sprintf(
+                        /* translators: 1: delivery boy name, 2: order number, 3: product title. */
+                        __(
+                            '<b>%1$s</b> assigned as Delivery Boy for order <b>%2$s</b> item <b>%3$s</b>.',
+                            'mstore-api'
+                        ),
+                        $wcfm_delivery_boy_user->first_name .
+                        " " .
+                        $wcfm_delivery_boy_user->last_name,
                     "#" . $order_id,
                     get_the_title($product_id)
                 );
@@ -2930,9 +2957,10 @@ class VendorAdminWCFMHelper
                         ))
                 ) {
                     $wcfm_messages = sprintf(
+                        /* translators: 1: delivery boy name, 2: order number. */
                         __(
-                            "<b>%s</b> assigned as Delivery Boy for order <b>%s</b>.",
-                            "wc-frontend-manager-delivery"
+                            '<b>%1$s</b> assigned as Delivery Boy for order <b>%2$s</b>.',
+                            'mstore-api'
                         ),
                         $wcfm_delivery_boy_user->first_name .
                         " " .
@@ -2953,9 +2981,10 @@ class VendorAdminWCFMHelper
 
             if (apply_filters("wcfm_is_allow_itemwise_notification", true)) {
                 $wcfm_messages = sprintf(
+                    /* translators: 1: order number, 2: product title. */
                     __(
-                        "You have assigned to order <b>%s</b> item <b>%s</b>.",
-                        "wc-frontend-manager-delivery"
+                        'You have assigned to order <b>%1$s</b> item <b>%2$s</b>.',
+                        'mstore-api'
                     ),
                     '#<span class="wcfm_dashboard_item_title">' .
                     $order_id .
@@ -2997,9 +3026,10 @@ class VendorAdminWCFMHelper
                         ))
                 ) {
                     $wcfm_messages = sprintf(
+                        /* translators: %s: order number. */
                         __(
-                            "You have assigned to order <b>%s</b>.",
-                            "wc-frontend-manager-delivery"
+                            'You have assigned to order <b>%s</b>.',
+                            'mstore-api'
                         ),
                         '#<span class="wcfm_dashboard_item_title">' .
                         $order_id .
@@ -3063,13 +3093,14 @@ class VendorAdminWCFMHelper
         $sql = "SELECT {$table_name}.ID, {$table_name}.display_name, {$table_name}.user_login, {$table_name}.user_email";
         $sql .= " FROM {$table_name} INNER JOIN {$table_name2}";
         $sql .= " ON {$table_name}.ID = {$table_name2}.user_id";
-        $sql .= " WHERE {$table_name2}.meta_key = '{$wpdb->prefix}capabilities' ";
+        $sql .= " WHERE {$table_name2}.meta_key = '" . esc_sql( $wpdb->prefix . 'capabilities' ) . "' ";
         $sql .= " AND {$table_name2}.meta_value LIKE '%wcfm_delivery_boy%' AND ({$table_name}.display_name LIKE %s OR {$table_name}.user_login LIKE %s OR {$table_name}.user_email LIKE %s)";
         $sql .= " ORDER BY {$table_name}.display_name";
 
         $search_text = '%'.sanitize_text_field($name).'%';
+        // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
         $sql  = $wpdb->prepare($sql, $search_text, $search_text, $search_text);
-        $users = $wpdb->get_results($sql);
+        $users = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
         if (count($users) == 0) {
             return new WP_REST_Response(

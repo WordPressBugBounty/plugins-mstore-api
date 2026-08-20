@@ -18,12 +18,12 @@ class AppleSignInHelper
             'iat' => $current_time,
             'exp' => $current_time + 86400 * 180
         ];
-        
+
         $headers = [
             'alg' => 'ES256',
             'kid' => $key_id
         ];
-        
+
         return JWT::encode($payload, $private_key, 'ES256', null, $headers);
     }
 
@@ -39,28 +39,22 @@ class AppleSignInHelper
             'client_secret' => AppleSignInHelper::generate_secret_key($bundle_id,$team_id),
         );
 
-        // Set cURL options
-        $ch = curl_init($tokenEndpoint);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($requestData));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/x-www-form-urlencoded'));
+        $response = wp_remote_post(
+            $tokenEndpoint,
+            array(
+                'timeout' => 15,
+                'headers' => array(
+                    'Content-Type' => 'application/x-www-form-urlencoded',
+                ),
+                'body' => $requestData,
+            )
+        );
 
-        // Execute cURL request
-        $response = curl_exec($ch);
-
-        // Check for errors
-        if (curl_errno($ch)) {
-            echo 'cURL error: ' . curl_error($ch);
-            curl_close($ch);
+        if ( is_wp_error( $response ) ) {
             return false;
         }
 
-        // Close cURL
-        curl_close($ch);
-
-        // Decode the JSON response
-        $data = json_decode($response, true);
+        $data = json_decode(wp_remote_retrieve_body($response), true);
 
         if(isset($data['error_description'])){
             return new WP_Error($data['error_description']);

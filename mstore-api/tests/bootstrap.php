@@ -1,8 +1,13 @@
 <?php
-
 declare(strict_types=1);
 
-define('ABSPATH', dirname(__DIR__) . '/');
+if ( ! defined( 'ABSPATH' ) && php_sapi_name() !== 'cli' ) {
+    exit;
+}
+
+if ( ! defined( 'ABSPATH' ) ) {
+    define('ABSPATH', dirname(__DIR__) . '/');
+}
 
 $GLOBALS['mstore_test_state'] = array();
 
