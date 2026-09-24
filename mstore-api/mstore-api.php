@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.21.3
+ * Version: 4.22.0
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  * License: GPL-2.0-or-later
@@ -99,7 +99,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.21.3';
+    public $version = '4.22.0';
 
     public function __construct()
     {

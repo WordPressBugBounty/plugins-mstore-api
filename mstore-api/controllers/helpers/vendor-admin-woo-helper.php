@@ -44,6 +44,46 @@ class VendorAdminWooHelper
         return true;
     }
 
+    protected function get_delivery_user_response($user_id)
+    {
+        $user = get_userdata($user_id);
+        if (!$user) {
+            return null;
+        }
+
+        $avatar = get_user_meta($user->ID, 'user_avatar', true);
+        if (!isset($avatar) || $avatar == "" || is_bool($avatar)) {
+            $avatar = get_avatar_url($user->ID);
+        } else {
+            $avatar = $avatar[0];
+        }
+
+        return array(
+            'id' => $user->ID,
+            'name' => $user->display_name,
+            'profile_picture' => $avatar,
+        );
+    }
+
+    protected function get_order_delivery_user($order_id)
+    {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return null;
+        }
+
+        $delivery_boy = $order->get_meta('lddfw_driverid', true);
+        if (empty($delivery_boy)) {
+            $delivery_boy = $order->get_meta('ddwc_driver_id', true);
+        }
+
+        if (empty($delivery_boy)) {
+            return null;
+        }
+
+        return $this->get_delivery_user_response($delivery_boy);
+    }
+
     protected function get_attribute_taxonomy_name($slug, $product)
     {
         $attributes = $product->get_attributes();
@@ -273,12 +313,16 @@ class VendorAdminWooHelper
             $count = count($order['line_items']);
             $order['product_count'] = $count;
             $order = getCommissionOrderResponse($order, $user_id);
+            $delivery_user = $this->get_order_delivery_user($item->ID);
 
             for ($i = 0; $i < $count; $i++) {
                 $product_id = absint($order['line_items'][$i]['product_id']);
                 $image = wp_get_attachment_image_src(get_post_thumbnail_id($product_id));
                 if ($image && count($image) > 0 && !is_null($image[0])) {
                     $order['line_items'][$i]['featured_image'] = $image[0];
+                }
+                if ($delivery_user) {
+                    $order['line_items'][$i]['delivery_user'] = $delivery_user;
                 }
             }
             $results[] = $order;
@@ -290,30 +334,67 @@ class VendorAdminWooHelper
         ), 200);
     }
 
-    public function flutter_get_sale_stats($user_id)
+    public function flutter_get_sale_stats($user_id, $request = null)
     {
         $id = $user_id;
         $price_decimal = get_option('woocommerce_price_num_decimals', 2);
-        $sales_stats['gross_sales']['last_month'] = $this->wcfm_get_gross_sales_by_vendor($id, 'last_month');
-        $sales_stats['gross_sales']['month'] = $this->wcfm_get_gross_sales_by_vendor($id, 'month');
-        $sales_stats['gross_sales']['year'] = $this->wcfm_get_gross_sales_by_vendor($id, 'year');
+        $current_month_start = strtotime(mstore_wp_date_compat('Y-m-01', current_time('timestamp', 0)));
+        $last_month_start = strtotime('-1 month', $current_month_start);
+        $current_month_start_date = mstore_wp_date_compat('Y-m-d', $current_month_start);
+        $last_month_start_date = mstore_wp_date_compat('Y-m-d', $last_month_start);
+
+        $gross_sales_month_series = $this->get_month_sale_stats_series($id, 'gross_sales');
+        $gross_sales_year_series = $this->get_year_sale_stats_series($id, 'gross_sales', $gross_sales_month_series);
+        $earnings_month_series = $this->get_month_sale_stats_series($id, 'earnings');
+        $earnings_year_series = $this->get_year_sale_stats_series($id, 'earnings', $earnings_month_series);
+
+        $sales_stats['gross_sales']['last_month'] = round($this->get_sale_stats_series_value($id, 'gross_sales', $last_month_start_date, $current_month_start_date), $price_decimal);
+        $sales_stats['gross_sales']['month'] = round($this->sum_sale_stats_series($gross_sales_month_series), $price_decimal);
+        $sales_stats['gross_sales']['year'] = round($this->sum_sale_stats_series($gross_sales_year_series), $price_decimal);
         $sales_stats['gross_sales']['week_1'] = $this->wcfm_get_gross_sales_by_vendor($id, '7day');
         $sales_stats['gross_sales']['week_2'] = round($this->wcfm_get_gross_sales_by_vendor($id, '14day'), $price_decimal);
         $sales_stats['gross_sales']['week_3'] = round($this->wcfm_get_gross_sales_by_vendor($id, '21day'), $price_decimal);
         $sales_stats['gross_sales']['week_4'] = round($this->wcfm_get_gross_sales_by_vendor($id, '28day'), $price_decimal);
         $sales_stats['gross_sales']['week_5'] = round($this->wcfm_get_gross_sales_by_vendor($id, '35day'), $price_decimal);
         $sales_stats['gross_sales']['all'] = round($this->wcfm_get_gross_sales_by_vendor($id, 'all'), $price_decimal);
-        $sales_stats['gross_sales']['profit_percentage'] = mstore_calculate_percentage_change($sales_stats['gross_sales']['month'], $sales_stats['gross_sales']['last_month']);
-        $sales_stats['earnings']['last_month'] = round($this->wcfm_get_commission_by_vendor($id, 'last_month'), $price_decimal);
-        $sales_stats['earnings']['month'] = round($this->wcfm_get_commission_by_vendor($id, 'month'), $price_decimal);
-        $sales_stats['earnings']['year'] = round($this->wcfm_get_commission_by_vendor($id, 'year'), $price_decimal);
+        $sales_stats['earnings']['last_month'] = round($this->get_sale_stats_series_value($id, 'earnings', $last_month_start_date, $current_month_start_date), $price_decimal);
+        $sales_stats['earnings']['month'] = round($this->sum_sale_stats_series($earnings_month_series), $price_decimal);
+        $sales_stats['earnings']['year'] = round($this->sum_sale_stats_series($earnings_year_series), $price_decimal);
         $sales_stats['earnings']['week_1'] = round($this->wcfm_get_commission_by_vendor($id, '7day'), $price_decimal);
         $sales_stats['earnings']['week_2'] = round($this->wcfm_get_commission_by_vendor($id, '14day'), $price_decimal);
         $sales_stats['earnings']['week_3'] = round($this->wcfm_get_commission_by_vendor($id, '21day'), $price_decimal);
         $sales_stats['earnings']['week_4'] = round($this->wcfm_get_commission_by_vendor($id, '28day'), $price_decimal);
         $sales_stats['earnings']['week_5'] = round($this->wcfm_get_commission_by_vendor($id, '35day'), $price_decimal);
         $sales_stats['earnings']['all'] = round($this->wcfm_get_commission_by_vendor($id, 'all'), $price_decimal);
+
+        $chart_period = isset($request['chart_period']) ? sanitize_text_field($request['chart_period']) : '';
+        if (!empty($chart_period)) {
+            if ($chart_period == 'month') {
+                $sales_stats['gross_sales']['series'][$chart_period] = $gross_sales_month_series;
+                $sales_stats['earnings']['series'][$chart_period] = $earnings_month_series;
+            } else if ($chart_period == 'year') {
+                $sales_stats['gross_sales']['series'][$chart_period] = $gross_sales_year_series;
+                $sales_stats['earnings']['series'][$chart_period] = $earnings_year_series;
+            } else if ($chart_period == 'all') {
+                $sales_stats['gross_sales']['series'][$chart_period] = $this->get_all_sale_stats_series($id, 'gross_sales', $gross_sales_year_series);
+                $sales_stats['earnings']['series'][$chart_period] = $this->get_all_sale_stats_series($id, 'earnings', $earnings_year_series);
+            } else {
+                $sales_stats['gross_sales']['series'][$chart_period] = $this->get_sale_stats_series($id, 'gross_sales', $chart_period);
+                $sales_stats['earnings']['series'][$chart_period] = $this->get_sale_stats_series($id, 'earnings', $chart_period);
+            }
+
+            if ($chart_period == 'all') {
+                $sales_stats['gross_sales'][$chart_period] = round($this->sum_sale_stats_series($sales_stats['gross_sales']['series'][$chart_period]), $price_decimal);
+                $sales_stats['earnings'][$chart_period] = round($this->sum_sale_stats_series($sales_stats['earnings']['series'][$chart_period]), $price_decimal);
+            }
+        }
+
+        $sales_stats['gross_sales']['profit_percentage'] = mstore_calculate_percentage_change($sales_stats['gross_sales']['month'], $sales_stats['gross_sales']['last_month']);
+        $sales_stats['gross_sales']['week_profit_percentage'] = mstore_calculate_percentage_change($sales_stats['gross_sales']['week_1'], $sales_stats['gross_sales']['week_2']);
+        $sales_stats['gross_sales']['year_profit_percentage'] = mstore_calculate_percentage_change($sales_stats['gross_sales']['year'], $this->get_previous_year_sale_stats($id, 'gross_sales'));
         $sales_stats['earnings']['profit_percentage'] = mstore_calculate_percentage_change($sales_stats['earnings']['month'], $sales_stats['earnings']['last_month']);
+        $sales_stats['earnings']['week_profit_percentage'] = mstore_calculate_percentage_change($sales_stats['earnings']['week_1'], $sales_stats['earnings']['week_2']);
+        $sales_stats['earnings']['year_profit_percentage'] = mstore_calculate_percentage_change($sales_stats['earnings']['year'], $this->get_previous_year_sale_stats($id, 'earnings'));
 
         $sales_stats['currency'] = get_woocommerce_currency();
 
@@ -321,6 +402,137 @@ class VendorAdminWooHelper
             'status' => 'success',
             'response' => $sales_stats
         ), 200);
+    }
+
+    private function get_sale_stats_series($vendor_id, $type, $period)
+    {
+        switch ($period) {
+            case 'week':
+                return $this->get_week_sale_stats_series($vendor_id, $type);
+            case 'month':
+                return $this->get_month_sale_stats_series($vendor_id, $type);
+            case 'year':
+                return $this->get_year_sale_stats_series($vendor_id, $type);
+            case 'all':
+                return $this->get_all_sale_stats_series($vendor_id, $type);
+            default:
+                return array();
+        }
+    }
+
+    private function get_previous_year_sale_stats($vendor_id, $type)
+    {
+        $current_year = intval(mstore_wp_date_compat('Y', current_time('timestamp', 0)));
+        $from = strtotime(($current_year - 1) . '-01-01');
+        $to = strtotime($current_year . '-01-01');
+        return $this->get_sale_stats_series_value($vendor_id, $type, mstore_wp_date_compat('Y-m-d', $from), mstore_wp_date_compat('Y-m-d', $to));
+    }
+
+    private function get_week_sale_stats_series($vendor_id, $type)
+    {
+        $series = array();
+        $start_of_week = strtotime('monday this week', current_time('timestamp', 0));
+
+        for ($index = 0; $index < 7; $index++) {
+            $from = strtotime('+' . $index . ' days', $start_of_week);
+            $to = strtotime('+1 day', $from);
+            $series[] = $this->make_sale_stats_point(
+                mstore_wp_date_compat('D', $from),
+                $this->get_sale_stats_series_value($vendor_id, $type, mstore_wp_date_compat('Y-m-d', $from), mstore_wp_date_compat('Y-m-d', $to))
+            );
+        }
+        return $series;
+    }
+
+    private function get_month_sale_stats_series($vendor_id, $type)
+    {
+        $series = array();
+        $start = strtotime(mstore_wp_date_compat('Y-m-1', current_time('timestamp', 0)));
+        $end = current_time('timestamp', 0);
+
+        for ($date = $start; $date <= $end; $date = strtotime('+1 day', $date)) {
+            $next = strtotime('+1 day', $date);
+            $series[] = $this->make_sale_stats_point(
+                mstore_wp_date_compat('j', $date),
+                $this->get_sale_stats_series_value($vendor_id, $type, mstore_wp_date_compat('Y-m-d', $date), mstore_wp_date_compat('Y-m-d', $next))
+            );
+        }
+        return $series;
+    }
+
+    private function get_year_sale_stats_series($vendor_id, $type, $current_month_series = null)
+    {
+        $series = array();
+        $year = mstore_wp_date_compat('Y', current_time('timestamp', 0));
+        $current_month = intval(mstore_wp_date_compat('n', current_time('timestamp', 0)));
+
+        for ($month = 1; $month <= 12; $month++) {
+            $from = strtotime($year . '-' . $month . '-01');
+            $to = strtotime('+1 month', $from);
+            $value = $this->get_sale_stats_series_value($vendor_id, $type, mstore_wp_date_compat('Y-m-d', $from), mstore_wp_date_compat('Y-m-d', $to));
+            if ($month == $current_month) {
+                if ($current_month_series == null) {
+                    $current_month_series = $this->get_month_sale_stats_series($vendor_id, $type);
+                }
+                $value = $this->sum_sale_stats_series($current_month_series);
+            }
+
+            $series[] = $this->make_sale_stats_point(
+                mstore_wp_date_compat('M', $from),
+                $value
+            );
+        }
+        return $series;
+    }
+
+    private function get_all_sale_stats_series($vendor_id, $type, $current_year_series = null)
+    {
+        $series = array();
+        $current_year = intval(mstore_wp_date_compat('Y', current_time('timestamp', 0)));
+        $start_year = $current_year - 9;
+
+        for ($year = $start_year; $year <= $current_year; $year++) {
+            $from = strtotime($year . '-01-01');
+            $to = strtotime(($year + 1) . '-01-01');
+            $value = $this->get_sale_stats_series_value($vendor_id, $type, mstore_wp_date_compat('Y-m-d', $from), mstore_wp_date_compat('Y-m-d', $to));
+            if ($year == $current_year) {
+                if ($current_year_series == null) {
+                    $current_year_series = $this->get_year_sale_stats_series($vendor_id, $type);
+                }
+                $value = $this->sum_sale_stats_series($current_year_series);
+            }
+
+            $series[] = $this->make_sale_stats_point(
+                (string) $year,
+                $value
+            );
+        }
+        return $series;
+    }
+
+    private function make_sale_stats_point($label, $value)
+    {
+        return array(
+            'label' => $label,
+            'value' => round($value, get_option('woocommerce_price_num_decimals', 2)),
+        );
+    }
+
+    private function sum_sale_stats_series($series)
+    {
+        $total = 0;
+        foreach ($series as $point) {
+            $total += isset($point['value']) ? $point['value'] : 0;
+        }
+        return $total;
+    }
+
+    private function get_sale_stats_series_value($vendor_id, $type, $from, $to)
+    {
+        if ($type == 'earnings') {
+            return $this->wcfm_get_commission_by_vendor($vendor_id, 'custom', false, 0, $from, $to);
+        }
+        return $this->wcfm_get_gross_sales_by_vendor($vendor_id, 'custom', false, 0, $from, $to);
     }
 
     public function flutter_update_order_status($request, $user_id)
@@ -363,121 +575,7 @@ class VendorAdminWooHelper
 
     function wcfm_get_gross_sales_by_vendor($vendor_id = '', $interval = '7day', $is_paid = false, $order_id = 0, $filter_date_form = '', $filter_date_to = '')
     {
-
-        global $woocommerce, $wpdb, $product;
-        include_once($woocommerce->plugin_path() . '/includes/admin/reports/class-wc-admin-report.php');
-
-        // WooCommerce Admin Report
-        $wc_report = new WC_Admin_Report();
-
-            // Set date parameters for the current month
-        switch ($interval) {
-            case 'year':
-                $start_date = strtotime(mstore_wp_date_compat('Y-m', current_time('timestamp')) . '-01 midnight');
-                $end_date = strtotime('-1year', $start_date) - 86400;
-                $wc_report->start_date = $end_date;
-                $wc_report->end_date = $start_date;
-                break;
-            case 'last_month':
-                $start_date = strtotime("first day of last month-01 midnight");
-                $end_date = strtotime("last day of last month-01 midnight");
-                $wc_report->start_date = $start_date;
-                $wc_report->end_date = $end_date;
-                break;
-            case 'month':
-                $start_date = strtotime("first day of this month-01 midnight");
-                $end_date = strtotime("now-01 midnight");
-                $wc_report->start_date = $start_date;
-                $wc_report->end_date = $end_date;
-                break;
-            case 'custom':
-                break;
-            case 'all':
-                $start_date = strtotime(mstore_wp_date_compat('Y-m', current_time('timestamp')) . '-01 midnight');
-                $end_date = strtotime('-10year', $start_date) - 86400;
-                $wc_report->start_date = $end_date;
-                $wc_report->end_date = $start_date;
-                break;
-            case '7day':
-                $start_date = strtotime("now-01 midnight");
-                $end_date = strtotime("now-7days-01 midnight");
-                $wc_report->start_date = $end_date;
-                $wc_report->end_date = $start_date;
-                break;
-            case '14day':
-                $start_date = strtotime("now-7days-01 midnight");
-                $end_date = strtotime("now-14days-01 midnight");
-                $wc_report->start_date = $end_date;
-                $wc_report->end_date = $start_date;
-                break;
-            case '21day':
-                $start_date = strtotime("now-14days-01 midnight");
-                $end_date = strtotime("now-21days-01 midnight");
-                $wc_report->start_date = $end_date;
-                $wc_report->end_date = $start_date;
-                break;
-            case '28day':
-                $start_date = strtotime("now-21days-01 midnight");
-                $end_date = strtotime("now-28days-01 midnight");
-                $wc_report->start_date = $end_date;
-                $wc_report->end_date = $start_date;
-                break;
-            case '35day':
-                $start_date = strtotime("now-28days-01 midnight");
-                $end_date = strtotime("now-35days-01 midnight");
-                $wc_report->start_date = $end_date;
-                $wc_report->end_date = $start_date;
-                break;
-            case 'default':
-        }
-
-        // Avoid max join size error
-        $wpdb->query('SET SQL_BIG_SELECTS=1');
-
-        // Get data for current month sold products
-        $sold_products = $wc_report->get_order_report_data(array(
-            'data' => array(
-                '_product_id' => array(
-                    'type' => 'order_item_meta',
-                    'order_item_type' => 'line_item',
-                    'function' => '',
-                    'name' => 'product_id'
-                ),
-                '_qty' => array(
-                    'type' => 'order_item_meta',
-                    'order_item_type' => 'line_item',
-                    'function' => 'SUM',
-                    'name' => 'quantity'
-                ),
-                '_line_subtotal' => array(
-                    'type' => 'order_item_meta',
-                    'order_item_type' => 'line_item',
-                    'function' => 'SUM',
-                    'name' => 'gross'
-                ),
-                '_line_total' => array(
-                    'type' => 'order_item_meta',
-                    'order_item_type' => 'line_item',
-                    'function' => 'SUM',
-                    'name' => 'gross_after_discount'
-                )
-            ),
-            'query_type' => 'get_results',
-            'group_by' => 'product_id',
-            'where_meta' => '',
-            'order_by' => 'quantity DESC',
-            'order_types' => wc_get_order_types('order_count'),
-            'filter_range' => true,
-            'order_status' => array(
-                'completed'
-            ),
-        ));
-        $data = 0;
-
-        foreach ($sold_products as $product) {
-            $data += $product->gross;
-        }
-        return $data;
+        return $this->get_woo_order_line_total_by_interval('gross_sales', $interval, $filter_date_form, $filter_date_to);
     }
 
     /**
@@ -485,125 +583,70 @@ class VendorAdminWooHelper
      */
     function wcfm_get_commission_by_vendor($vendor_id = '', $interval = '7day', $is_paid = false, $order_id = 0, $filter_date_form = '', $filter_date_to = '')
     {
-        global $woocommerce, $wpdb, $product;
-        include_once($woocommerce->plugin_path() . '/includes/admin/reports/class-wc-admin-report.php');
+        return $this->get_woo_order_line_total_by_interval('earnings', $interval, $filter_date_form, $filter_date_to);
+    }
 
-        // WooCommerce Admin Report
-        $wc_report = new WC_Admin_Report();
+    private function get_woo_order_line_total_by_interval($type, $interval = '7day', $filter_date_form = '', $filter_date_to = '')
+    {
+        $date_range = $this->get_woo_sale_stats_date_range($interval, $filter_date_form, $filter_date_to);
+        $query = array(
+            'limit' => -1,
+            'status' => array('completed'),
+            'return' => 'objects',
+        );
 
-        // Set date parameters for the current month
-        $start_date = strtotime(mstore_wp_date_compat('Y-m', current_time('timestamp')) . '-01 midnight');
-        $end_date = strtotime('-1month', $start_date) - 86400;
-        $wc_report->start_date = $end_date;
-        $wc_report->end_date = $start_date;
-
-        switch ($interval) {
-            case 'year':
-                $start_date = strtotime(mstore_wp_date_compat('Y-m', current_time('timestamp')) . '-01 midnight');
-                $end_date = strtotime('-1year', $start_date) - 86400;
-                $wc_report->start_date = $end_date;
-                $wc_report->end_date = $start_date;
-                break;
-            case 'last_month':
-                $start_date = strtotime("first day of last month-01 midnight");
-                $end_date = strtotime("last day of last month-01 midnight");
-                $wc_report->start_date = $start_date;
-                $wc_report->end_date = $end_date;
-                break;
-            case 'month':
-                $start_date = strtotime("first day of this month-01 midnight");
-                $end_date = strtotime("now-01 midnight");
-                $wc_report->start_date = $start_date;
-                $wc_report->end_date = $end_date;
-                break;
-            case 'custom':
-                break;
-            case 'all':
-                $start_date = strtotime(mstore_wp_date_compat('Y-m', current_time('timestamp')) . '-01 midnight');
-                $end_date = strtotime('-10year', $start_date) - 86400;
-                $wc_report->start_date = $end_date;
-                $wc_report->end_date = $start_date;
-                break;
-            case '7day':
-                $start_date = strtotime("now-01 midnight");
-                $end_date = strtotime("now-7days-01 midnight");
-                $wc_report->start_date = $end_date;
-                $wc_report->end_date = $start_date;
-                break;
-            case '14day':
-                $start_date = strtotime("now-7days-01 midnight");
-                $end_date = strtotime("now-14days-01 midnight");
-                $wc_report->start_date = $end_date;
-                $wc_report->end_date = $start_date;
-                break;
-            case '21day':
-                $start_date = strtotime("now-14days-01 midnight");
-                $end_date = strtotime("now-21days-01 midnight");
-                $wc_report->start_date = $end_date;
-                $wc_report->end_date = $start_date;
-                break;
-            case '28day':
-                $start_date = strtotime("now-21days-01 midnight");
-                $end_date = strtotime("now-28days-01 midnight");
-                $wc_report->start_date = $end_date;
-                $wc_report->end_date = $start_date;
-                break;
-            case '35day':
-                $start_date = strtotime("now-28days-01 midnight");
-                $end_date = strtotime("now-35days-01 midnight");
-                $wc_report->start_date = $end_date;
-                $wc_report->end_date = $start_date;
-                break;
-            case 'default':
+        if (!empty($date_range)) {
+            $query['date_created'] = $date_range['from'] . '...' . ($date_range['to'] - 1);
         }
 
-        // Avoid max join size error
-        $wpdb->query('SET SQL_BIG_SELECTS=1');
-
-        // Get data for current month sold products
-        $sold_products = $wc_report->get_order_report_data(array(
-            'data' => array(
-                '_product_id' => array(
-                    'type' => 'order_item_meta',
-                    'order_item_type' => 'line_item',
-                    'function' => '',
-                    'name' => 'product_id'
-                ),
-                '_qty' => array(
-                    'type' => 'order_item_meta',
-                    'order_item_type' => 'line_item',
-                    'function' => 'SUM',
-                    'name' => 'quantity'
-                ),
-                '_line_subtotal' => array(
-                    'type' => 'order_item_meta',
-                    'order_item_type' => 'line_item',
-                    'function' => 'SUM',
-                    'name' => 'gross'
-                ),
-                '_line_total' => array(
-                    'type' => 'order_item_meta',
-                    'order_item_type' => 'line_item',
-                    'function' => 'SUM',
-                    'name' => 'gross_after_discount'
-                )
-            ),
-            'query_type' => 'get_results',
-            'group_by' => 'product_id',
-            'where_meta' => '',
-            'order_by' => 'quantity DESC',
-            'order_types' => wc_get_order_types('order_count'),
-            'filter_range' => true,
-            'order_status' => array(
-                'completed'
-            ),
-        ));
+        $orders = wc_get_orders($query);
         $data = 0;
 
-        foreach ($sold_products as $product) {
-            $data += $product->gross_after_discount;
+        foreach ($orders as $order) {
+            foreach ($order->get_items('line_item') as $item) {
+                $data += $type == 'earnings' ? $item->get_total() : $item->get_subtotal();
+            }
         }
+
         return $data;
+    }
+
+    private function get_woo_sale_stats_date_range($interval, $filter_date_form = '', $filter_date_to = '')
+    {
+        switch ($interval) {
+            case 'year':
+                $start = strtotime(mstore_wp_date_compat('Y-01-01', current_time('timestamp', 0)) . ' midnight');
+                return array('from' => $start, 'to' => strtotime('+1 year', $start));
+            case 'last_month':
+                $start = strtotime(mstore_wp_date_compat('Y-m-01', current_time('timestamp', 0)) . ' midnight');
+                return array('from' => strtotime('-1 month', $start), 'to' => $start);
+            case 'month':
+                $start = strtotime(mstore_wp_date_compat('Y-m-01', current_time('timestamp', 0)) . ' midnight');
+                return array('from' => $start, 'to' => strtotime('+1 month', $start));
+            case 'custom':
+                return array(
+                    'from' => strtotime($filter_date_form . ' midnight'),
+                    'to' => strtotime($filter_date_to . ' midnight'),
+                );
+            case '7day':
+                $to = strtotime('today midnight', current_time('timestamp', 0));
+                return array('from' => strtotime('-7 days', $to), 'to' => $to);
+            case '14day':
+                $to = strtotime('-7 days', strtotime('today midnight', current_time('timestamp', 0)));
+                return array('from' => strtotime('-7 days', $to), 'to' => $to);
+            case '21day':
+                $to = strtotime('-14 days', strtotime('today midnight', current_time('timestamp', 0)));
+                return array('from' => strtotime('-7 days', $to), 'to' => $to);
+            case '28day':
+                $to = strtotime('-21 days', strtotime('today midnight', current_time('timestamp', 0)));
+                return array('from' => strtotime('-7 days', $to), 'to' => $to);
+            case '35day':
+                $to = strtotime('-28 days', strtotime('today midnight', current_time('timestamp', 0)));
+                return array('from' => strtotime('-7 days', $to), 'to' => $to);
+            case 'all':
+            default:
+                return array();
+        }
     }
 
     /* GET WCFM SALE STATS FUNCTIONS. CUSTOM BY TOAN 04/11/2020 */

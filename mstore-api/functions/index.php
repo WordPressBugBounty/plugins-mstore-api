@@ -610,6 +610,11 @@ function parseMetaDataForBookingProduct($cart_item)
         foreach ($cart_item["meta_data"] as $key => $value) {
             if ($value["key"] == "staff_ids" && isset($value["value"])) {
                 $staffs = is_array($value["value"]) ? $value["value"] : json_decode($value["value"], true);
+                if (!is_array($staffs)) {
+                    // A single staff id may arrive as a scalar (e.g. 5 or "5"); json_decode() then
+                    // returns a non-array, which breaks count() on PHP 8.
+                    $staffs = ($value["value"] === "" || $value["value"] === null) ? [] : [$value["value"]];
+                }
                 if (count($staffs) > 0) {
                     $meta_data["wc_appointments_field_staff"] = sanitize_text_field($staffs[0]);
                 }
@@ -1358,31 +1363,58 @@ function upload_image_from_mobile($image, $count, $user_id)
     require_once(ABSPATH . 'wp-admin/includes/media.php');
     $imgdata = $image;
     $imgdata = trim($imgdata);
-    $imgdata = str_replace('data:image/png;base64,', '', $imgdata);
-    $imgdata = str_replace('data:image/jpg;base64,', '', $imgdata);
-    $imgdata = str_replace('data:image/jpeg;base64,', '', $imgdata);
-    $imgdata = str_replace('data:image/gif;base64,', '', $imgdata);
+    $imgdata = preg_replace(
+        '/^data:image\/[a-z0-9.+-]+;base64,/i',
+        '',
+        $imgdata
+    );
     $imgdata = str_replace(' ', '+', $imgdata);
-    $imgdata = base64_decode($imgdata);
-    $f = finfo_open();
+    $imgdata = base64_decode($imgdata, true);
+    if ($imgdata === false) {
+        throw new Exception("The uploaded file is not a valid image. Please try again.");
+    }
+
+    $f = finfo_open(FILEINFO_MIME_TYPE);
     $mime_type = finfo_buffer($f, $imgdata, FILEINFO_MIME_TYPE);
-    $type_file = explode('/', $mime_type);
-    $avatar = time() . '_' . $count . '.' . $type_file[1];
+    finfo_close($f);
+
+    if (empty($mime_type) || !wp_match_mime_types('image', $mime_type)) {
+        throw new Exception("The uploaded file is not a valid image. Please try again.");
+    }
+
+    $uploaddir = wp_upload_dir();
+    $myDirPath = $uploaddir["path"];
+    $myDirUrl = $uploaddir["url"];
+
+    $extension = function_exists('wp_get_default_extension_for_mime_type')
+        ? wp_get_default_extension_for_mime_type($mime_type)
+        : '';
+    if (empty($extension)) {
+        $type_file = explode('/', $mime_type);
+        $extension = sanitize_key(end($type_file));
+    }
+
+    $base_name = sprintf(
+        'mobile_%d_%d_%s',
+        (int) $user_id,
+        (int) $count,
+        wp_generate_uuid4()
+    );
+    $avatar = wp_unique_filename(
+        $myDirPath,
+        sanitize_file_name($base_name . '.' . $extension)
+    );
 
     $wp_filetype = wp_check_filetype(basename($avatar), null);
     if ( ! wp_match_mime_types( 'image', $wp_filetype['type'] ) ) {
         throw new Exception( "The uploaded file is not a valid image. Please try again.");
 	}
 
-    $uploaddir = wp_upload_dir();
-    $myDirPath = $uploaddir["path"];
-    $myDirUrl = $uploaddir["url"];
-
-    file_put_contents($uploaddir["path"] . '/' . $avatar, $imgdata);
+    file_put_contents($myDirPath . '/' . $avatar, $imgdata);
 
     $filename = $myDirUrl . '/' . basename($avatar);
 
-    $uploadfile = $uploaddir["path"] . '/' . basename($filename);
+    $uploadfile = $myDirPath . '/' . basename($filename);
 
     $attachment = array(
         "post_mime_type" => $wp_filetype["type"],
@@ -1613,7 +1645,12 @@ function buildCartItemData($line_items, $callback){
                 $attributes = [];
                 if (isset($item["meta_data"])) {
                     foreach ($item["meta_data"] as $meta_data_item) {
-                        if($meta_data_item["value"] != null){
+                    // Only scalar values may go into $attributes: it is forwarded as
+                    // WC_Cart::add_to_cart()'s $variation arg, and WC_Cart::generate_cart_id()
+                    // runs trim() over every value, fataling on arrays/objects.
+                    // Non-scalar meta (e.g. booking `staff_ids`) is handled separately
+                    // via parseMetaDataForBookingProduct() into $_POST.
+                    if ($meta_data_item["value"] != null && is_scalar($meta_data_item["value"])) {
                             $attributes[strtolower($meta_data_item["key"])] = $meta_data_item["value"];
                         }
                     }

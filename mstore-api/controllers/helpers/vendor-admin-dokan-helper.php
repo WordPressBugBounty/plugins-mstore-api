@@ -43,6 +43,46 @@ class VendorAdminDokanHelper
         return true;
     }
 
+    protected function get_delivery_user_response($user_id)
+    {
+        $user = get_userdata($user_id);
+        if (!$user) {
+            return null;
+        }
+
+        $avatar = get_user_meta($user->ID, 'user_avatar', true);
+        if (!isset($avatar) || $avatar == "" || is_bool($avatar)) {
+            $avatar = get_avatar_url($user->ID);
+        } else {
+            $avatar = $avatar[0];
+        }
+
+        return array(
+            'id' => $user->ID,
+            'name' => $user->display_name,
+            'profile_picture' => $avatar,
+        );
+    }
+
+    protected function get_order_delivery_user($order_id)
+    {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return null;
+        }
+
+        $delivery_boy = $order->get_meta('lddfw_driverid', true);
+        if (empty($delivery_boy)) {
+            $delivery_boy = $order->get_meta('ddwc_driver_id', true);
+        }
+
+        if (empty($delivery_boy)) {
+            return null;
+        }
+
+        return $this->get_delivery_user_response($delivery_boy);
+    }
+
     protected function get_attribute_taxonomy_name($slug, $product)
     {
         $attributes = $product->get_attributes();
@@ -117,18 +157,23 @@ class VendorAdminDokanHelper
     public function update_vendor_profile($request, $user_id)
     {
         $data = json_decode($request, true);
+
+        if (!is_array($data)) {
+            return $this->sendError("request_failed", "Invalid vendor profile data", 400);
+        }
+
         $vendor_data = get_user_meta($user_id, "dokan_profile_settings", true);
         if (is_string($vendor_data)) {
             $vendor_data = [];
         }
 
-        $store_name = sanitize_text_field($data["store_name"]);
-        $store_nicename = sanitize_text_field($data["store_slug"]);
-        $store_location = sanitize_text_field($data["store_location"]);
-        $store_lat = sanitize_text_field($data["store_lat"]);
-        $store_lng = sanitize_text_field($data["store_lng"]);
-        $phone =  sanitize_text_field($data["phone"]);
-        $store_email =  sanitize_text_field($data["store_email"]);
+        $store_name = isset($data["store_name"]) ? sanitize_text_field($data["store_name"]) : '';
+        $store_nicename = isset($data["store_slug"]) ? sanitize_text_field($data["store_slug"]) : '';
+        $store_location = isset($data["store_location"]) ? sanitize_text_field($data["store_location"]) : '';
+        $store_lat = isset($data["store_lat"]) ? sanitize_text_field($data["store_lat"]) : '';
+        $store_lng = isset($data["store_lng"]) ? sanitize_text_field($data["store_lng"]) : '';
+        $phone = isset($data["phone"]) ? sanitize_text_field($data["phone"]) : '';
+        $store_email = isset($data["store_email"]) ? sanitize_text_field($data["store_email"]) : '';
 
 
         if (!empty($store_name)) {
@@ -136,6 +181,9 @@ class VendorAdminDokanHelper
         }
         if (!empty($phone)) {
             $vendor_data['phone'] = $phone;
+        }
+        if (isset($data['show_email'])) {
+            $vendor_data['show_email'] = rest_sanitize_boolean($data['show_email']) ? 'yes' : 'no';
         }
         if (!empty($data['address'])) {
             $vendor_data['address'] =  $data['address'];
@@ -147,11 +195,7 @@ class VendorAdminDokanHelper
             $vendor_data['find_address'] =  $store_location;
         }
         if (!empty($store_email)) {
-            $args = array(
-                'ID'         => $user_id,
-                'user_email' => esc_attr($store_email)
-            );
-            wp_update_user($args);
+            $vendor_data['store_email'] = $store_email;
         }
 
         $count = 0;
@@ -189,19 +233,24 @@ class VendorAdminDokanHelper
             $count++;
         }
 
-        if (isset($store_lng) && isset($store_lat) && isset($store_location)) {
+        if ($store_lng !== '' && $store_lat !== '' && $store_location !== '') {
             update_user_meta($user_id, 'dokan_geo_latitude', $store_lat);
             update_user_meta($user_id, 'dokan_geo_longitude', $store_lng);
             update_user_meta($user_id, 'dokan_geo_address', $store_location);
         }
 
-        wp_update_user(array(
-            'ID' => $user_id,
-            'user_nicename' => $store_nicename,
-        ));
+        if (!empty($store_nicename)) {
+            wp_update_user(array(
+                'ID' => $user_id,
+                'user_nicename' => $store_nicename,
+            ));
+        }
 
         update_user_meta($user_id, 'dokan_profile_settings', $vendor_data);
-        update_user_meta($user_id, 'dokan_store_name', $store_name);
+
+        if (!empty($store_name)) {
+            update_user_meta($user_id, 'dokan_store_name', $store_name);
+        }
 
         return new WP_REST_Response(
             [
@@ -399,12 +448,16 @@ class VendorAdminDokanHelper
                 $order = $response->get_data();
                 $count = count($order['line_items']);
                 $order['product_count'] = $count;
+                $delivery_user = $this->get_order_delivery_user($item->order_id);
 
                 for ($i = 0; $i < $count; $i++) {
                     $product_id = absint($order['line_items'][$i]['product_id']);
                     $image = wp_get_attachment_image_src(get_post_thumbnail_id($product_id));
                     if ($image && !is_null($image[0])) {
                         $order['line_items'][$i]['featured_image'] = $image[0];
+                    }
+                    if ($delivery_user) {
+                        $order['line_items'][$i]['delivery_user'] = $delivery_user;
                     }
                 }
                 $results[] = $order;
@@ -416,7 +469,7 @@ class VendorAdminDokanHelper
         ), 200);
     }
 
-    public function add_date_filter($args, $interval)
+    public function add_date_filter($args, $interval, $from = '', $to = '')
     {
         $query_args = array_replace([], $args);
         switch ($interval) {
@@ -452,6 +505,10 @@ class VendorAdminDokanHelper
                 $query_args['date']['from'] = mstore_wp_date_compat('Y-m-d', strtotime('-5 weeks', current_time('timestamp', 0)));
                 $query_args['date']['to']   = mstore_wp_date_compat('Y-m-d', strtotime('-4 weeks', current_time('timestamp', 0)));
                 return $query_args;
+            case 'custom':
+                $query_args['date']['from'] = $from;
+                $query_args['date']['to']   = $to;
+                return $query_args;
             default:
                 return $query_args;
         }
@@ -479,7 +536,7 @@ class VendorAdminDokanHelper
         return round($total, $price_decimal);
     }
 
-    public function flutter_get_sale_stats($user_id)
+    public function flutter_get_sale_stats($user_id, $request = null)
     {
         $args = ['seller_id' => $user_id, 'return' => 'objects', 'status' => 'wc-completed'];
         $last_month_orders = dokan()->order->all($this->add_date_filter($args,'last_month'));
@@ -502,6 +559,8 @@ class VendorAdminDokanHelper
         $sales_stats['gross_sales']['week_5'] = $this->get_gross_sales_orders($week_5_orders);
         $sales_stats['gross_sales']['all'] = $this->get_gross_sales_orders($all_orders);
         $sales_stats['gross_sales']['profit_percentage'] = mstore_calculate_percentage_change($sales_stats['gross_sales']['month'], $sales_stats['gross_sales']['last_month']);
+        $sales_stats['gross_sales']['week_profit_percentage'] = mstore_calculate_percentage_change($sales_stats['gross_sales']['week_1'], $sales_stats['gross_sales']['week_2']);
+        $sales_stats['gross_sales']['year_profit_percentage'] = mstore_calculate_percentage_change($sales_stats['gross_sales']['year'], $this->get_previous_year_sale_stats($args, 'gross_sales'));
         $sales_stats['earnings']['last_month'] = $this->get_gross_earnings_orders($last_month_orders);
         $sales_stats['earnings']['month'] = $this->get_gross_earnings_orders($month_orders);
         $sales_stats['earnings']['year'] = $this->get_gross_earnings_orders($year_orders);
@@ -512,6 +571,14 @@ class VendorAdminDokanHelper
         $sales_stats['earnings']['week_5'] = $this->get_gross_earnings_orders($week_5_orders);
         $sales_stats['earnings']['all'] = $this->get_gross_earnings_orders($all_orders);
         $sales_stats['earnings']['profit_percentage'] = mstore_calculate_percentage_change($sales_stats['earnings']['month'], $sales_stats['earnings']['last_month']);
+        $sales_stats['earnings']['week_profit_percentage'] = mstore_calculate_percentage_change($sales_stats['earnings']['week_1'], $sales_stats['earnings']['week_2']);
+        $sales_stats['earnings']['year_profit_percentage'] = mstore_calculate_percentage_change($sales_stats['earnings']['year'], $this->get_previous_year_sale_stats($args, 'earnings'));
+
+        $chart_period = isset($request['chart_period']) ? sanitize_text_field($request['chart_period']) : '';
+        if (!empty($chart_period)) {
+            $sales_stats['gross_sales']['series'][$chart_period] = $this->get_sale_stats_series($args, 'gross_sales', $chart_period);
+            $sales_stats['earnings']['series'][$chart_period] = $this->get_sale_stats_series($args, 'earnings', $chart_period);
+        }
 
         $sales_stats['currency'] = get_woocommerce_currency();
 
@@ -519,6 +586,112 @@ class VendorAdminDokanHelper
             'status' => 'success',
             'response' => $sales_stats
         ), 200);
+    }
+
+    private function get_sale_stats_series($args, $type, $period)
+    {
+        switch ($period) {
+            case 'week':
+                return $this->get_week_sale_stats_series($args, $type);
+            case 'month':
+                return $this->get_month_sale_stats_series($args, $type);
+            case 'year':
+                return $this->get_year_sale_stats_series($args, $type);
+            case 'all':
+                return $this->get_all_sale_stats_series($args, $type);
+            default:
+                return array();
+        }
+    }
+
+    private function get_previous_year_sale_stats($args, $type)
+    {
+        $current_year = intval(mstore_wp_date_compat('Y', current_time('timestamp', 0)));
+        $from = strtotime(($current_year - 1) . '-01-01');
+        $to = strtotime($current_year . '-01-01');
+        return $this->get_sale_stats_series_value($args, $type, mstore_wp_date_compat('Y-m-d', $from), mstore_wp_date_compat('Y-m-d', $to));
+    }
+
+    private function get_week_sale_stats_series($args, $type)
+    {
+        $series = array();
+        $start_of_week = strtotime('monday this week', current_time('timestamp', 0));
+
+        for ($index = 0; $index < 7; $index++) {
+            $from = strtotime('+' . $index . ' days', $start_of_week);
+            $to = strtotime('+1 day', $from);
+            $series[] = $this->make_sale_stats_point(
+                mstore_wp_date_compat('D', $from),
+                $this->get_sale_stats_series_value($args, $type, mstore_wp_date_compat('Y-m-d', $from), mstore_wp_date_compat('Y-m-d', $to))
+            );
+        }
+        return $series;
+    }
+
+    private function get_month_sale_stats_series($args, $type)
+    {
+        $series = array();
+        $start = strtotime(mstore_wp_date_compat('Y-m-1', current_time('timestamp', 0)));
+        $end = current_time('timestamp', 0);
+
+        for ($date = $start; $date <= $end; $date = strtotime('+1 day', $date)) {
+            $next = strtotime('+1 day', $date);
+            $series[] = $this->make_sale_stats_point(
+                mstore_wp_date_compat('j', $date),
+                $this->get_sale_stats_series_value($args, $type, mstore_wp_date_compat('Y-m-d', $date), mstore_wp_date_compat('Y-m-d', $next))
+            );
+        }
+        return $series;
+    }
+
+    private function get_year_sale_stats_series($args, $type)
+    {
+        $series = array();
+        $year = mstore_wp_date_compat('Y', current_time('timestamp', 0));
+
+        for ($month = 1; $month <= 12; $month++) {
+            $from = strtotime($year . '-' . $month . '-01');
+            $to = strtotime('+1 month', $from);
+            $series[] = $this->make_sale_stats_point(
+                mstore_wp_date_compat('M', $from),
+                $this->get_sale_stats_series_value($args, $type, mstore_wp_date_compat('Y-m-d', $from), mstore_wp_date_compat('Y-m-d', $to))
+            );
+        }
+        return $series;
+    }
+
+    private function get_all_sale_stats_series($args, $type)
+    {
+        $series = array();
+        $current_year = intval(mstore_wp_date_compat('Y', current_time('timestamp', 0)));
+        $start_year = $current_year - 9;
+
+        for ($year = $start_year; $year <= $current_year; $year++) {
+            $from = strtotime($year . '-01-01');
+            $to = strtotime(($year + 1) . '-01-01');
+            $series[] = $this->make_sale_stats_point(
+                (string) $year,
+                $this->get_sale_stats_series_value($args, $type, mstore_wp_date_compat('Y-m-d', $from), mstore_wp_date_compat('Y-m-d', $to))
+            );
+        }
+        return $series;
+    }
+
+    private function make_sale_stats_point($label, $value)
+    {
+        return array(
+            'label' => $label,
+            'value' => round($value, get_option('woocommerce_price_num_decimals', 2)),
+        );
+    }
+
+    private function get_sale_stats_series_value($args, $type, $from, $to)
+    {
+        $orders = dokan()->order->all($this->add_date_filter($args, 'custom', $from, $to));
+        if ($type == 'earnings') {
+            return $this->get_gross_earnings_orders($orders);
+        }
+        return $this->get_gross_sales_orders($orders);
     }
 
     public function flutter_update_order_status($request, $user_id)

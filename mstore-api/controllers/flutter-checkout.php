@@ -95,11 +95,11 @@ class FlutterCheckout extends FlutterBaseController
     private function get_themehigh_additional_checkout_fields(): array
     {
         $additional_fields = WC()->checkout->get_checkout_fields('additional');
-        $is_themehigh_active = function_exists('is_plugin_active') && (
-            is_plugin_active('woo-checkout-field-editor-pro/checkout-form-designer.php')
-        );
 
-        if (!$is_themehigh_active) {
+        if (
+            !function_exists('is_plugin_active')
+            || !is_plugin_active('woo-checkout-field-editor-pro/checkout-form-designer.php')
+        ) {
             return $additional_fields;
         }
 
@@ -118,6 +118,16 @@ class FlutterCheckout extends FlutterBaseController
 
     public function get_checkout_fields($request)
     {
+        if (
+            !function_exists('is_plugin_active')
+            || (
+                !is_plugin_active('woo-checkout-field-editor-pro/checkout-form-designer.php')
+                && !is_plugin_active('woocommerce-checkout-manager/woocommerce-checkout-manager.php')
+            )
+        ) {
+            return parent::send_invalid_plugin_error("You need to install and activate a supported checkout field editor plugin to use this api");
+        }
+
         $billing_fields = WC()->checkout->get_checkout_fields('billing');
         $shipping_fields = WC()->checkout->get_checkout_fields('shipping');
         $additional_fields = $this->get_themehigh_additional_checkout_fields();

@@ -258,13 +258,17 @@ class FlutterBooking extends FlutterBaseController
         if (!isset($product_id)) {
             return parent::sendError("invalid_data", "product_id is required", 400);
         }
+        // Capture the requested day before set_query_params() below wipes it
+        // from the request; it is needed to clip the controller's response.
+        $requested_date = isset($request["date"]) ? $request["date"] : null;
+
         $params = ["product_ids" => $product_id];
         if (!empty($request['staff_ids'])) {
             $params["staff_ids"] = $request['staff_ids'];
         }
-        if (isset($request["date"])) {
-            $params["min_date"] = $request['date'];
-            $params["max_date"] = mstore_wp_date_compat("Y-m-d", strtotime($request['date'] . " +1 day"));
+        if ($requested_date !== null) {
+            $params["min_date"] = $requested_date;
+            $params["max_date"] = mstore_wp_date_compat("Y-m-d", strtotime($requested_date . " +1 day"));
         }
         $request->set_query_params($params);
         $controller = new WC_Appointments_REST_Slots_Controller();
@@ -291,7 +295,30 @@ class FlutterBooking extends FlutterBaseController
             ? $slots_data["records"]
             : [];
 
-        $slots = array_values(array_filter($records, function ($item) {
+        // `WC_Appointments_REST_Slots_Controller` treats `min_date` as "start
+        // searching from here" and keeps scanning forward to fill its result
+        // set; `max_date` is not a hard ceiling. So a request for a day with no
+        // availability (e.g. a weekday the product is not bookable on, or a day
+        // inside the min-advance window) comes back with slots for a *later*
+        // date. Clip the records to the requested day and drop slots that have
+        // no capacity left.
+        $range_start = $requested_date !== null ? strtotime($requested_date) : null;
+        $range_end = $range_start ? strtotime($requested_date . " +1 day") : null;
+
+        $slots = array_values(array_filter($records, function ($item) use ($range_start, $range_end) {
+            if (empty($item["date"])) {
+                return false;
+            }
+
+            $timestamp = strtotime($item["date"]);
+            if ($range_start !== null && ($timestamp < $range_start || $timestamp >= $range_end)) {
+                return false;
+            }
+
+            if (isset($item["available"])) {
+                return (int) $item["available"] > 0;
+            }
+
             return isset($item["scheduled"]) && (int) $item["scheduled"] === 0;
         }));
         return array_values(array_unique(array_map(function ($item) {

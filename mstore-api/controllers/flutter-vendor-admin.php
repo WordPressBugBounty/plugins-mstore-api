@@ -259,10 +259,69 @@ class FlutterVendorAdmin extends FlutterBaseController
         $helper = new VendorAdminWCFMHelper();
         if (isset($request['platform'])) {
             if ($request['platform'] == 'woo' || $request['platform'] == 'dokan') {
+                $keyword = '';
+                if (isset($request['search']) && $request['search'] !== '') {
+                    $keyword = sanitize_text_field($request['search']);
+                } elseif (isset($request['name']) && $request['name'] !== '') {
+                    $keyword = sanitize_text_field($request['name']);
+                }
+                $users = [];
+
                 $args = array(
-                    'role'    => 'driver',
+                    'role' => 'driver',
                 );
-                $users = get_users( $args );
+
+                if (!empty($keyword)) {
+                    $args['search'] = '*' . esc_attr($keyword) . '*';
+                    $args['search_columns'] = array(
+                        'user_login',
+                        'user_email',
+                        'display_name',
+                );
+                }
+
+                $users = get_users($args);
+
+                if (!empty($keyword)) {
+                    $phone_query = new WP_User_Query(array(
+                        'role' => 'driver',
+                        'fields' => 'all',
+                        'meta_query' => array(
+                            'relation' => 'OR',
+                            array(
+                                'key' => 'billing_phone',
+                                'value' => $keyword,
+                                'compare' => 'LIKE',
+                            ),
+                            array(
+                                'key' => 'phone',
+                                'value' => $keyword,
+                                'compare' => 'LIKE',
+                            ),
+                            array(
+                                'key' => 'first_name',
+                                'value' => $keyword,
+                                'compare' => 'LIKE',
+                            ),
+                            array(
+                                'key' => 'last_name',
+                                'value' => $keyword,
+                                'compare' => 'LIKE',
+                            ),
+                        ),
+                    ));
+
+                    $indexed_users = array();
+                    foreach ($users as $user) {
+                        $indexed_users[$user->ID] = $user;
+                    }
+
+                    foreach ($phone_query->get_results() as $user) {
+                        $indexed_users[$user->ID] = $user;
+                    }
+
+                    $users = array_values($indexed_users);
+                }
 
                 $results = [];
                 foreach ($users as $user) {
@@ -272,10 +331,12 @@ class FlutterVendorAdmin extends FlutterBaseController
                     } else {
                         $avatar = $avatar[0];
                     }
+
                     $results[] = [
                         "id" => $user->ID,
                         "name" => $user->display_name,
                         "profile_picture" => $avatar,
+                        "contact_hint" => $this->get_delivery_user_contact_hint($user),
                     ];
                 }
 
@@ -289,7 +350,52 @@ class FlutterVendorAdmin extends FlutterBaseController
             }
 
         }
-        return $helper->get_delivery_users($request['name']);
+        $search_text = '';
+        if (isset($request['search']) && $request['search'] !== '') {
+            $search_text = $request['search'];
+        } elseif (isset($request['name']) && $request['name'] !== '') {
+            $search_text = $request['name'];
+        }
+
+        return $helper->get_delivery_users($search_text);
+    }
+
+    protected function get_delivery_user_contact_hint($user)
+    {
+        if (!empty($user->user_email)) {
+            return $this->mask_email($user->user_email);
+        }
+
+        $phone = get_user_meta($user->ID, 'billing_phone', true);
+        if (empty($phone)) {
+            $phone = get_user_meta($user->ID, 'phone', true);
+        }
+
+        return $this->mask_phone($phone);
+    }
+
+    protected function mask_email($email)
+    {
+        $email_parts = explode('@', $email);
+        if (count($email_parts) !== 2) {
+            return '';
+        }
+
+        $name = $email_parts[0];
+        $domain = $email_parts[1];
+        $visible_length = min(2, strlen($name));
+
+        return substr($name, 0, $visible_length) . '***@' . $domain;
+    }
+
+    protected function mask_phone($phone)
+    {
+        $digits = preg_replace('/\D+/', '', $phone);
+        if (empty($digits)) {
+            return '';
+        }
+
+        return '***' . substr($digits, -4);
     }
 
     public function add_delivery_person_to_order($request)
@@ -315,11 +421,16 @@ class FlutterVendorAdmin extends FlutterBaseController
                     return parent::sendError("invalid_plugin", "No delivery plugin found", 400);
                 }
 
-                // Update driver ID for order.
-                update_post_meta($order_id, $meta_key, $delivery_boy);
-
                 // Get order.
-                $order = new WC_Order($order_id);
+                $order = wc_get_order($order_id);
+                if (!$order) {
+                    return parent::sendError("invalid_order", "This order does not exist", 404);
+                }
+
+                // Update driver ID for order.
+                $order->update_meta_data($meta_key, $delivery_boy);
+                $order->save();
+
                 // Update order status.
                 $order->update_status('driver-assigned');
                 return new WP_REST_Response(
@@ -613,7 +724,7 @@ class FlutterVendorAdmin extends FlutterBaseController
                 $helper = new VendorAdminDokanHelper();
             }
         }
-        return $helper->flutter_get_sale_stats($user_id);
+        return $helper->flutter_get_sale_stats($user_id, $request);
 
     }
 

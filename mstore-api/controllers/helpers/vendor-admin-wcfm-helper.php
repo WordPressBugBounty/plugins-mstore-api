@@ -38,6 +38,28 @@ class VendorAdminWCFMHelper
         return true;
     }
 
+    protected function get_delivery_user_response($user_id)
+    {
+        $user = get_userdata($user_id);
+        if (!$user) {
+            return null;
+        }
+
+        $profile_pic = wp_get_attachment_image_src(
+            get_user_meta($user->ID, 'wclovers_user_avatar', true)
+        );
+        $profile_pic = is_array($profile_pic) ? $profile_pic[0] : null;
+        if (!$profile_pic) {
+            $profile_pic = get_avatar_url($user->ID);
+        }
+
+        return [
+            "id" => $user->ID,
+            "name" => $user->display_name,
+            "profile_picture" => $profile_pic,
+        ];
+    }
+
     protected function get_attribute_taxonomy_name($slug, $product)
     {
         $attributes = $product->get_attributes();
@@ -130,23 +152,34 @@ class VendorAdminWCFMHelper
     public function update_vendor_profile($request, $user_id)
     {
         $data = json_decode( $request, true);
+        if (!is_array($data)) {
+            return $this->sendError("request_failed", "Invalid vendor profile data", 400);
+        }
+
         $vendor_data = get_user_meta($user_id, "wcfmmp_profile_settings", true);
         if (is_string($vendor_data)) {
             $vendor_data = [];
         }
-        $vendor_data["store_name"] =  sanitize_text_field($data["store_name"]);
-        $vendor_data["store_slug"] =  sanitize_text_field($data["store_slug"]);
-        wp_update_user(array(
-            'ID' => $user_id,
-            'user_nicename' =>  sanitize_text_field($data["store_slug"])
-        ));
-        $vendor_data["wcfmmp_store_name"] =  sanitize_text_field($data["store_name"]);
-        update_user_meta($user_id, 'store_name',  sanitize_text_field($data["store_name"]));
-        update_user_meta($user_id, 'wcfmmp_store_name',  sanitize_text_field($data["store_name"]));
+        $store_name = isset($data["store_name"]) ? sanitize_text_field($data["store_name"]) : '';
+        $store_slug = isset($data["store_slug"]) ? sanitize_text_field($data["store_slug"]) : '';
+        $store_email = isset($data["store_email"]) ? sanitize_text_field($data["store_email"]) : '';
+        $phone = isset($data["phone"]) ? sanitize_text_field($data["phone"]) : '';
 
-
-        $vendor_data["store_email"] =  sanitize_text_field($data["store_email"]);
-        $vendor_data["phone"] =  sanitize_text_field($data["phone"]);
+        if (!empty($store_name)) {
+            $vendor_data["store_name"] = $store_name;
+            $vendor_data["wcfmmp_store_name"] = $store_name;
+            update_user_meta($user_id, 'store_name', $store_name);
+            update_user_meta($user_id, 'wcfmmp_store_name', $store_name);
+        }
+        if (!empty($store_slug)) {
+            $vendor_data["store_slug"] = $store_slug;
+        }
+        if (!empty($store_email)) {
+            $vendor_data["store_email"] = $store_email;
+        }
+        if (!empty($phone)) {
+            $vendor_data["phone"] = $phone;
+        }
 
         $count = 0;
 
@@ -227,26 +260,35 @@ class VendorAdminWCFMHelper
             $vendor_data["list_banner_video"] =  sanitize_text_field($data["list_banner_video"]);
         }
 
-        $vendor_data["shop_description"] =  sanitize_text_field($data["shop_description"]);
-        $vendor_data["_store_description"] =  sanitize_text_field($data["shop_description"]);
-        update_user_meta($user_id, '_store_description',  sanitize_text_field($data["shop_description"]));
+        if (isset($data["shop_description"])) {
+            $shop_description = sanitize_text_field($data["shop_description"]);
+            $vendor_data["shop_description"] = $shop_description;
+            $vendor_data["_store_description"] = $shop_description;
+            update_user_meta($user_id, '_store_description', $shop_description);
+        }
 
+        if (isset($data["address"])) {
+            $vendor_data["address"] =  $data["address"];
+        }
 
-        $vendor_data["address"] =  $data["address"];
+        if (isset($data["store_location"])) {
+            $vendor_data["geolocation"]["store_location"] =  sanitize_text_field($data["store_location"]);
+            $vendor_data["store_location"] =  sanitize_text_field($data["store_location"]);
+        }
+        if (isset($data["store_lat"])) {
+            $vendor_data["geolocation"]["store_lat"] =  sanitize_text_field($data["store_lat"]);
+            $vendor_data["store_lat"] =  sanitize_text_field($data["store_lat"]);
+        }
+        if (isset($data["store_lng"])) {
+            $vendor_data["geolocation"]["store_lng"] =  sanitize_text_field($data["store_lng"]);
+            $vendor_data["store_lng"] =  sanitize_text_field($data["store_lng"]);
+        }
 
-        $vendor_data["geolocation"]["store_location"] =  sanitize_text_field($data["store_location"]);
-        $vendor_data["geolocation"]["store_lat"] =  sanitize_text_field($data["store_lat"]);
-        $vendor_data["geolocation"]["store_lng"] =  sanitize_text_field($data["store_lng"]);
-        $vendor_data["store_location"] =  sanitize_text_field($data["store_location"]);
-        $vendor_data["store_lat"] =  sanitize_text_field($data["store_lat"]);
-        $vendor_data["store_lng"] =  sanitize_text_field($data["store_lng"]);
-
-        $vendor_data["store_hide_email"] =  sanitize_text_field($data["store_hide_email"]);
-        $vendor_data["store_hide_phone"] =  sanitize_text_field($data["store_hide_phone"]);
-        $vendor_data["store_hide_address"] =  sanitize_text_field($data["store_hide_address"]);
-        $vendor_data["store_hide_map"] =  sanitize_text_field($data["store_hide_map"]);
-        $vendor_data["store_hide_description"] = sanitize_text_field($data["store_hide_description"]);
-        $vendor_data["store_hide_policy"] =  sanitize_text_field($data["store_hide_policy"]);
+        foreach (["store_hide_email", "store_hide_phone", "store_hide_address", "store_hide_map", "store_hide_description", "store_hide_policy"] as $field) {
+            if (isset($data[$field])) {
+                $vendor_data[$field] = sanitize_text_field($data[$field]);
+            }
+        }
 
         update_user_meta($user_id, "wcfmmp_profile_settings", $vendor_data);
 
@@ -543,6 +585,13 @@ class VendorAdminWCFMHelper
                     $order["line_items"][$i]["meta"] = $order_item->get_meta_data();
                     if (is_plugin_active('wc-frontend-manager-delivery/wc-frontend-manager-delivery.php')) {
                         $table_name = $wpdb->prefix . "wcfm_delivery_orders";
+                        $sql = "SELECT delivery_boy FROM `{$table_name}`";
+                        $sql .= " WHERE 1=1";
+                        $sql .= " AND item_id = %s";
+                        $sql .= " AND product_id = %s";
+                        $sql .= " AND order_id = %s";
+                        $sql = $wpdb->prepare($sql, $order["line_items"][$i]["id"], $product_id, $item->order_id);
+                        $users = $wpdb->get_results($sql);
                         $sql = $wpdb->prepare(
                             'SELECT delivery_boy FROM `' . esc_sql( $table_name ) . '` WHERE product_id = %d AND order_id = %d',
                             $product_id,
@@ -551,12 +600,10 @@ class VendorAdminWCFMHelper
                         $users = $wpdb->get_results($sql); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter
 
                         if (count($users) > 0) {
-                            $user = get_userdata($users[0]->delivery_boy);
-                            $order["line_items"][$i]['delivery_user'] = [
-                                "id" => $user->ID,
-                                "name" => $user->display_name,
-                                "profile_picture" => $profile_pic,
-                            ];
+                            $delivery_user = $this->get_delivery_user_response($users[0]->delivery_boy);
+                            if ($delivery_user) {
+                                $order["line_items"][$i]['delivery_user'] = $delivery_user;
+                            }
                         }
                     }
                     $line_items[] = $order["line_items"][$i];
@@ -574,7 +621,7 @@ class VendorAdminWCFMHelper
         );
     }
 
-    public function flutter_get_sale_stats($user_id)
+    public function flutter_get_sale_stats($user_id, $request = null)
     {
         $id = $user_id;
         $price_decimal = get_option("woocommerce_price_num_decimals", 2);
@@ -616,6 +663,8 @@ class VendorAdminWCFMHelper
             $price_decimal
         );
         $sales_stats["gross_sales"]["profit_percentage"] = mstore_calculate_percentage_change($sales_stats["gross_sales"]["month"], $sales_stats["gross_sales"]["last_month"]);
+        $sales_stats["gross_sales"]["week_profit_percentage"] = mstore_calculate_percentage_change($sales_stats["gross_sales"]["week_1"], $sales_stats["gross_sales"]["week_2"]);
+        $sales_stats["gross_sales"]["year_profit_percentage"] = mstore_calculate_percentage_change($sales_stats["gross_sales"]["year"], $this->get_previous_year_sale_stats($id, "gross_sales"));
         $sales_stats["earnings"]["last_month"] = round(
             $this->wcfm_get_commission_by_vendor($id, "last_month"),
             $price_decimal
@@ -653,6 +702,14 @@ class VendorAdminWCFMHelper
             $price_decimal
         );
         $sales_stats["earnings"]["profit_percentage"] = mstore_calculate_percentage_change($sales_stats["earnings"]["month"], $sales_stats["earnings"]["last_month"]);
+        $sales_stats["earnings"]["week_profit_percentage"] = mstore_calculate_percentage_change($sales_stats["earnings"]["week_1"], $sales_stats["earnings"]["week_2"]);
+        $sales_stats["earnings"]["year_profit_percentage"] = mstore_calculate_percentage_change($sales_stats["earnings"]["year"], $this->get_previous_year_sale_stats($id, "earnings"));
+
+        $chart_period = isset($request['chart_period']) ? sanitize_text_field($request['chart_period']) : '';
+        if (!empty($chart_period)) {
+            $sales_stats["gross_sales"]["series"][$chart_period] = $this->get_sale_stats_series($id, "gross_sales", $chart_period);
+            $sales_stats["earnings"]["series"][$chart_period] = $this->get_sale_stats_series($id, "earnings", $chart_period);
+        }
 
         $sales_stats["currency"] = get_woocommerce_currency();
 
@@ -663,6 +720,111 @@ class VendorAdminWCFMHelper
             ],
             200
         );
+    }
+
+    private function get_sale_stats_series($vendor_id, $type, $period)
+    {
+        switch ($period) {
+            case "week":
+                return $this->get_week_sale_stats_series($vendor_id, $type);
+            case "month":
+                return $this->get_month_sale_stats_series($vendor_id, $type);
+            case "year":
+                return $this->get_year_sale_stats_series($vendor_id, $type);
+            case "all":
+                return $this->get_all_sale_stats_series($vendor_id, $type);
+            default:
+                return [];
+        }
+    }
+
+    private function get_previous_year_sale_stats($vendor_id, $type)
+    {
+        $current_year = intval(mstore_wp_date_compat("Y", current_time("timestamp", 0)));
+        $from = strtotime(($current_year - 1) . "-01-01");
+        $to = strtotime($current_year . "-01-01");
+        return $this->get_sale_stats_series_value($vendor_id, $type, mstore_wp_date_compat("Y-m-d", $from), mstore_wp_date_compat("Y-m-d", $to));
+    }
+
+    private function get_week_sale_stats_series($vendor_id, $type)
+    {
+        $series = [];
+        $start_of_week = strtotime("monday this week", current_time("timestamp", 0));
+
+        for ($index = 0; $index < 7; $index++) {
+            $from = strtotime("+" . $index . " days", $start_of_week);
+            $to = strtotime("+1 day", $from);
+            $series[] = $this->make_sale_stats_point(
+                mstore_wp_date_compat("D", $from),
+                $this->get_sale_stats_series_value($vendor_id, $type, mstore_wp_date_compat("Y-m-d", $from), mstore_wp_date_compat("Y-m-d", $to))
+            );
+        }
+        return $series;
+    }
+
+    private function get_month_sale_stats_series($vendor_id, $type)
+    {
+        $series = [];
+        $start = strtotime(mstore_wp_date_compat("Y-m-1", current_time("timestamp", 0)));
+        $end = current_time("timestamp", 0);
+
+        for ($date = $start; $date <= $end; $date = strtotime("+1 day", $date)) {
+            $next = strtotime("+1 day", $date);
+            $series[] = $this->make_sale_stats_point(
+                mstore_wp_date_compat("j", $date),
+                $this->get_sale_stats_series_value($vendor_id, $type, mstore_wp_date_compat("Y-m-d", $date), mstore_wp_date_compat("Y-m-d", $next))
+            );
+        }
+        return $series;
+    }
+
+    private function get_year_sale_stats_series($vendor_id, $type)
+    {
+        $series = [];
+        $year = mstore_wp_date_compat("Y", current_time("timestamp", 0));
+
+        for ($month = 1; $month <= 12; $month++) {
+            $from = strtotime($year . "-" . $month . "-01");
+            $to = strtotime("+1 month", $from);
+            $series[] = $this->make_sale_stats_point(
+                mstore_wp_date_compat("M", $from),
+                $this->get_sale_stats_series_value($vendor_id, $type, mstore_wp_date_compat("Y-m-d", $from), mstore_wp_date_compat("Y-m-d", $to))
+            );
+        }
+        return $series;
+    }
+
+    private function get_all_sale_stats_series($vendor_id, $type)
+    {
+        $series = [];
+        $current_year = intval(mstore_wp_date_compat("Y", current_time("timestamp", 0)));
+        $start_year = $current_year - 9;
+
+        for ($year = $start_year; $year <= $current_year; $year++) {
+            $from = strtotime($year . "-01-01");
+            $to = strtotime(($year + 1) . "-01-01");
+            $series[] = $this->make_sale_stats_point(
+                (string) $year,
+                $this->get_sale_stats_series_value($vendor_id, $type, mstore_wp_date_compat("Y-m-d", $from), mstore_wp_date_compat("Y-m-d", $to))
+            );
+        }
+        return $series;
+    }
+
+    private function make_sale_stats_point($label, $value)
+    {
+        return [
+            "label" => $label,
+            "value" => round($value, get_option("woocommerce_price_num_decimals", 2)),
+        ];
+    }
+
+    private function get_sale_stats_series_value($vendor_id, $type, $from, $to)
+    {
+        if ($type == "earnings") {
+            return $this->wcfm_get_commission_by_vendor($vendor_id, "custom", false, 0, $from, $to);
+        }
+        return $this->wcfm_get_gross_sales_by_vendor($vendor_id, "custom", false, 0, $from, $to);
     }
 
     public function flutter_update_order_status($request, $user_id)
@@ -1149,6 +1311,9 @@ class VendorAdminWCFMHelper
                 $sql .= " AND MONTH( {$table_handler}.{$time} ) = MONTH( NOW() )";
                 break;
             case "all":
+                break;
+            case "custom":
+                $sql .= " AND DATE( {$table_handler}.{$time} ) BETWEEN '{$start_date}' AND '{$end_date}'";
                 break;
             case "7day":
                 $sql .= " AND DATE( {$table_handler}.{$time} ) BETWEEN DATE_SUB( NOW(), INTERVAL 7 DAY ) AND NOW()";
@@ -3117,12 +3282,12 @@ class VendorAdminWCFMHelper
             if (!$profile_pic) {
                 $profile_pic = null;
             }
+
             $user_ids[] = [
                 "id" => $user->ID,
                 "name" => $user->display_name,
-                "user_email" => $user->user_email,
-                "user_login" => $user->user_login,
                 "profile_picture" => $profile_pic,
+                "contact_hint" => $this->get_delivery_user_contact_hint($user),
             ];
         }
 
@@ -3133,5 +3298,43 @@ class VendorAdminWCFMHelper
             ],
             200
         );
+    }
+
+    protected function get_delivery_user_contact_hint($user)
+    {
+        if (!empty($user->user_email)) {
+            return $this->mask_email($user->user_email);
+        }
+
+        $phone = get_user_meta($user->ID, 'billing_phone', true);
+        if (empty($phone)) {
+            $phone = get_user_meta($user->ID, 'phone', true);
+        }
+
+        return $this->mask_phone($phone);
+    }
+
+    protected function mask_email($email)
+    {
+        $email_parts = explode('@', $email);
+        if (count($email_parts) !== 2) {
+            return '';
+        }
+
+        $name = $email_parts[0];
+        $domain = $email_parts[1];
+        $visible_length = min(2, strlen($name));
+
+        return substr($name, 0, $visible_length) . '***@' . $domain;
+    }
+
+    protected function mask_phone($phone)
+    {
+        $digits = preg_replace('/\D+/', '', $phone);
+        if (empty($digits)) {
+            return '';
+        }
+
+        return '***' . substr($digits, -4);
     }
 }

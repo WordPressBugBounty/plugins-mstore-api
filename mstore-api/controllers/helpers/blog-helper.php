@@ -23,6 +23,92 @@ class FlutterBlogHelper
         return (int) $user_id;
     }
 
+    private function replace_inline_base64_images($content, $user_id)
+    {
+        if (empty($content) || strpos($content, 'data:image/') === false) {
+            return $content;
+        }
+
+        $count = 0;
+        return preg_replace_callback(
+            '/src=(["\'])(data:image\/[a-z0-9.+-]+;base64,[^"\']+)\\1/i',
+            function ($matches) use ($user_id, &$count) {
+                $attachment_id = upload_image_from_mobile($matches[2], $count, $user_id);
+                $count++;
+
+                if ($attachment_id == false || is_wp_error($attachment_id)) {
+                    return $matches[0];
+                }
+
+                $url = wp_get_attachment_url($attachment_id);
+                if (empty($url)) {
+                    return $matches[0];
+                }
+
+                return 'src=' . $matches[1] . esc_url($url) . $matches[1];
+            },
+            $content
+        );
+    }
+
+    private function with_blog_content_styles($callback)
+    {
+        $allow_editor_styles = function ($styles) {
+            $editor_styles = array(
+                'background-color',
+                'border',
+                'border-left',
+                'color',
+                'direction',
+                'font-family',
+                'font-size',
+                'font-style',
+                'font-weight',
+                'line-height',
+                'list-style-type',
+                'margin',
+                'margin-left',
+                'padding',
+                'text-align',
+                'text-decoration',
+                'vertical-align',
+            );
+
+            return array_values(array_unique(array_merge($styles, $editor_styles)));
+        };
+        $allow_editor_css_values = function ($allow_css, $css_test_string) {
+            if ($allow_css) {
+                return true;
+            }
+
+            return $this->is_safe_editor_color_css($css_test_string);
+        };
+
+        add_filter('safe_style_css', $allow_editor_styles);
+        add_filter('safecss_filter_attr_allow_css', $allow_editor_css_values, 10, 2);
+        try {
+            return call_user_func($callback);
+        } finally {
+            remove_filter('safecss_filter_attr_allow_css', $allow_editor_css_values, 10);
+            remove_filter('safe_style_css', $allow_editor_styles);
+        }
+    }
+
+    private function is_safe_editor_color_css($css)
+    {
+        $color_properties = '(?:background-color|color|border(?:-(?:top|right|bottom|left))?-color)';
+        $number = '(?:\d+(?:\.\d+)?|\.\d+)';
+        $rgb_component = $number . '%?';
+        $alpha_component = $number . '%?';
+        $hue = $number . '(?:deg|grad|rad|turn)?';
+        $space_or_comma = '(?:\s*,\s*|\s+)';
+        $optional_alpha = '(?:(?:\s*,\s*|\s*\/\s*)' . $alpha_component . ')?';
+
+        $rgb_color = 'rgba?\(\s*' . $rgb_component . $space_or_comma . $rgb_component . $space_or_comma . $rgb_component . $optional_alpha . '\s*\)';
+        $hsl_color = 'hsla?\(\s*' . $hue . $space_or_comma . $number . '%'. $space_or_comma . $number . '%' . $optional_alpha . '\s*\)';
+        return preg_match('/^' . $color_properties . '\s*:\s*(?:' . $rgb_color . '|' . $hsl_color . ')$/i', trim($css)) === 1;
+    }
+
     public function get_blog_from_dynamic_link($request)
     {
         if (isset($request['url'])) {
@@ -54,7 +140,7 @@ class FlutterBlogHelper
             if (!is_scalar($request['content'])) {
                 return new WP_Error("invalid_content", "Content must be a string.", array('status' => 400));
             }
-            $content = wp_kses_post(wp_unslash((string) $request['content']));
+            $content = wp_unslash((string) $request['content']);
         }
 
         if ($author <= 0) {
@@ -74,6 +160,8 @@ class FlutterBlogHelper
             return new WP_Error("unauthorized", "You are not allowed to create this post", array('status' => 401));
         }
 
+        $content = $this->replace_inline_base64_images($content, $user_id);
+
         // Validate and set post status
         $allowed_statuses = array('publish', 'draft', 'pending', 'private', 'future');
         if ($status == 'publish' || $status == 'published') {
@@ -86,14 +174,16 @@ class FlutterBlogHelper
             $status = 'draft';
         }
 
-        $my_post = array(
-            'post_author' => $user_id,
-            'post_title'   => $title,
-            'post_content' => $content,
-            'post_status' => $status,
-        );
+        $post_id = $this->with_blog_content_styles(function () use ($content, $status, $title, $user_id) {
+            $my_post = array(
+                'post_author' => $user_id,
+                'post_title'   => $title,
+                'post_content' => wp_kses_post($content),
+                'post_status' => $status,
+            );
 
-        $post_id = wp_insert_post( $my_post );
+            return wp_insert_post( $my_post );
+        });
 
 		if (!is_wp_error($post_id) && !empty($categories)) {
             wp_set_post_categories($post_id, array(intval($categories)), false);
@@ -126,7 +216,7 @@ class FlutterBlogHelper
             if (!is_scalar($request['content'])) {
                 return new WP_Error("invalid_content", "Content must be a string.", array('status' => 400));
             }
-            $content = wp_kses_post(wp_unslash((string) $request['content']));
+            $content = wp_unslash((string) $request['content']);
         }
         $status = isset($request['status']) ? sanitize_text_field($request['status']) : null;
         $categories = isset($request['categories']) ? sanitize_text_field($request['categories']) : null;
@@ -145,6 +235,10 @@ class FlutterBlogHelper
         wp_set_current_user($user_id);
         if ((int) $post->post_author !== (int) $user_id || !current_user_can('edit_post', $post_id)) {
             return new WP_Error("unauthorized", "You are not allowed to edit this post", array('status' => 401));
+        }
+
+        if ($content !== null) {
+            $content = $this->replace_inline_base64_images($content, $user_id);
         }
 
         $allowed_statuses = array('publish', 'draft', 'pending', 'private', 'future');
@@ -173,7 +267,13 @@ class FlutterBlogHelper
             $my_post['post_status'] = $status;
         }
 
-        $updated_post_id = wp_update_post($my_post, true);
+        $updated_post_id = $this->with_blog_content_styles(function () use ($my_post) {
+            if (isset($my_post['post_content'])) {
+                $my_post['post_content'] = wp_kses_post($my_post['post_content']);
+            }
+
+            return wp_update_post($my_post, true);
+        });
         if (is_wp_error($updated_post_id)) {
             return $updated_post_id;
         }

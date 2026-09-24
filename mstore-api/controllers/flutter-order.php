@@ -513,7 +513,6 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
         }
 		$data = $response->get_data();
 
-        // Send the customer invoice email.
        	$order = wc_get_order( $data['id'] );
         // Add additional field in order detail
         $this->persist_themehigh_additional_meta_to_order($order, $params);
@@ -527,14 +526,15 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
             }
         }
 
-        if($order->get_payment_method() == 'cod' || $order->has_status( array( 'processing', 'completed' ) )){
-            WC()->payment_gateways();
-            WC()->shipping();
-            WC()->mailer()->customer_invoice( $order );
-            WC()->mailer()->emails['WC_Email_New_Order']->trigger( $order->get_id(), $order, true );
-            add_filter( 'woocommerce_new_order_email_allows_resend', '__return_true' );
-            WC()->mailer()->emails['WC_Email_New_Order']->trigger( $order->get_id(), $order, true );
-        }
+        // // Send the customer invoice email.
+        // if($order->get_payment_method() == 'cod' || $order->has_status( array( 'processing', 'completed' ) )){
+        //     WC()->payment_gateways();
+        //     WC()->shipping();
+        //     WC()->mailer()->customer_invoice( $order );
+        //     WC()->mailer()->emails['WC_Email_New_Order']->trigger( $order->get_id(), $order, true );
+        //     add_filter( 'woocommerce_new_order_email_allows_resend', '__return_true' );
+        //     WC()->mailer()->emails['WC_Email_New_Order']->trigger( $order->get_id(), $order, true );
+        // }
 
         //add order note if payment method is tap
         if (isset($params['payment_method']) && $params['payment_method'] == 'tap' && isset($params['transaction_id'])) {

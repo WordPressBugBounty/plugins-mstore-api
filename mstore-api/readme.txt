@@ -2,7 +2,7 @@
 Contributors:      inspireui
 Tags:              flutter, app builder, app creator, mobile app builder, woocommerce app
 Requires at least: 4.4
-Stable tag:        4.21.3
+Stable tag:        4.22.0
 Tested up to:      7.1
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
@@ -48,6 +48,20 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 1. Click Install.
 
 == Changelog ==
+= 4.22.0 =
+  * Add vendor sale stats period series, weekly series, totals, and profit percentages
+  * Add delivery user information to vendor order responses
+  * Support inline base64 content images in blog editor content
+  * Improve vendor profile updates and delivery user lookup handling
+  * Improve disabled Checkout Field Manager messaging
+  * Fix Razorpay authorized payment capture before order completion
+  * Fix Dokan vendor account email updates
+  * Fix appointment checkout failures and get_slots day filtering
+  * Fix booking cart metadata handling when values contain arrays
+  * Fix duplicate order emails
+  * Fix inline blog image upload collisions and content style sanitization
+  * Security: Avoid exposing delivery user PII
+
 = 4.21.3 =
   * Maintenance: Fix plugin-check errors and improve WordPress.org plugin compliance
 

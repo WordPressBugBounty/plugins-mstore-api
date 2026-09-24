@@ -22,6 +22,10 @@ add_filter('wp_generate_attachment_metadata', 'dt_generate_attachment_metadata',
 
 function dt_generate_attachment_metadata($metadata, $attachment_id)
 {
+    if (empty($metadata['file'])) {
+        return $metadata;
+    }
+
     $attachment = get_post($attachment_id);
 
     $uploadPath = wp_upload_dir();

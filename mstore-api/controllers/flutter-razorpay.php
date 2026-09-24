@@ -123,11 +123,24 @@ class FlutterRazorpay extends FlutterBaseController
 
         $payment_data = json_decode(wp_remote_retrieve_body($response), true);
 
-        // SECURITY CHECK 4: Validate Payment Status is 'captured'
-        // NOTE: stores configured for manual capture report 'authorized' here, which is
-        // deliberately not treated as paid.
+        // SECURITY CHECK 4: Payment must be captured before Woo is marked paid.
+        // Native app checkout fires success on `authorized`. If the Razorpay
+        // account is set to manual capture (or auto-capture has not run yet),
+        // capture it here with the same keys used to verify the payment.
+        if (isset($payment_data['status']) && $payment_data['status'] === 'authorized') {
+            $payment_data = $this->capture_razorpay_payment(
+                $payment_id,
+                $payment_data,
+                $key_id,
+                $secret
+            );
+            if (is_wp_error($payment_data)) {
+                $order->add_order_note('Security Alert: Razorpay capture failed. Order status unchanged.');
+                return $payment_data;
+            }
+        }
+
         if (!isset($payment_data['status']) || $payment_data['status'] !== 'captured') {
-            // FIX: Prevent order sabotage and return proper WP_Error
             $order->add_order_note('Security Alert: Razorpay payment not captured. Status: ' . esc_html($payment_data['status'] ?? 'unknown') . '. Order status unchanged.');
             return new WP_Error('payment_not_captured', 'Payment was not captured.', array('status' => 400));
         }
@@ -164,6 +177,58 @@ class FlutterRazorpay extends FlutterBaseController
         $order->add_order_note("Razorpay Verified: S2S Payment successful.<br/>Payment ID: " . esc_html($payment_id));
 
         return rest_ensure_response(array('status' => 'success'));
+    }
+
+    /**
+     * Capture an authorized Razorpay payment, then return the updated payment entity.
+     *
+     * @param string $payment_id
+     * @param array  $payment_data
+     * @param string $key_id
+     * @param string $secret
+     * @return array|WP_Error
+     */
+    private function capture_razorpay_payment($payment_id, $payment_data, $key_id, $secret)
+    {
+        $auth_header = 'Basic ' . base64_encode($key_id . ':' . $secret);
+        $capture_response = wp_remote_post(
+            'https://api.razorpay.com/v1/payments/' . $payment_id . '/capture',
+            array(
+                'headers' => array(
+                    'Authorization' => $auth_header,
+                    'Content-Type'  => 'application/json',
+                ),
+                'timeout' => 15,
+                'body'    => wp_json_encode(array(
+                    'amount'   => isset($payment_data['amount']) ? intval($payment_data['amount']) : 0,
+                    'currency' => isset($payment_data['currency']) ? $payment_data['currency'] : '',
+                )),
+            )
+        );
+
+        if (!is_wp_error($capture_response) && wp_remote_retrieve_response_code($capture_response) === 200) {
+            $captured = json_decode(wp_remote_retrieve_body($capture_response), true);
+            if (is_array($captured)) {
+                return $captured;
+            }
+        }
+
+        // Auto-capture may have won the race; re-fetch before failing.
+        $refetch = wp_remote_get(
+            'https://api.razorpay.com/v1/payments/' . $payment_id,
+            array(
+                'headers' => array('Authorization' => $auth_header),
+                'timeout' => 15,
+            )
+        );
+        if (!is_wp_error($refetch) && wp_remote_retrieve_response_code($refetch) === 200) {
+            $refetched = json_decode(wp_remote_retrieve_body($refetch), true);
+            if (is_array($refetched)) {
+                return $refetched;
+            }
+        }
+
+        return new WP_Error('payment_not_captured', 'Payment was not captured.', array('status' => 400));
     }
 }
 
