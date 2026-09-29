@@ -1343,6 +1343,205 @@ function validateCookieLogin($cookie){
     }
 }
 
+/**
+ * Order statuses a customer may put their *own* order into.
+ *
+ * Everything that implies payment or fulfilment (processing, completed,
+ * refunded, delivery statuses, ...) is reserved for the store and the payment
+ * gateways, otherwise an unpaid order could be marked as paid by its buyer.
+ *
+ * @return string[]
+ */
+function mstore_customer_order_status_allowlist()
+{
+    $statuses = array('pending', 'on-hold', 'failed', 'cancelled');
+    if (function_exists('apply_filters')) {
+        $statuses = apply_filters('mstore_customer_order_status_allowlist', $statuses);
+    }
+    return is_array($statuses) ? array_values(array_map('strval', $statuses)) : array();
+}
+
+function mstore_normalize_order_status_slug($status)
+{
+    $status = strtolower(trim((string) $status));
+    return 'wc-' === substr($status, 0, 3) ? substr($status, 3) : $status;
+}
+
+/**
+ * Whether a customer is allowed to move their own order from $current_status
+ * to $requested_status.
+ *
+ * - Re-sending the current status is always a harmless no-op.
+ * - Only orders that are still unpaid (pending / on-hold / failed) can be moved.
+ * - Cancelling is limited to pending or failed orders.
+ * - The target must be on the customer allowlist.
+ */
+function mstore_is_customer_order_status_change_allowed($current_status, $requested_status)
+{
+    $current = mstore_normalize_order_status_slug($current_status);
+    $requested = mstore_normalize_order_status_slug($requested_status);
+
+    if ($requested === '') {
+        return false;
+    }
+
+    if ($requested === $current) {
+        return true;
+    }
+
+    if (!in_array($requested, mstore_customer_order_status_allowlist(), true)) {
+        return false;
+    }
+
+    $unpaid = array('pending', 'on-hold', 'failed');
+    if (!in_array($current, $unpaid, true)) {
+        return false;
+    }
+
+    if ($requested === 'cancelled') {
+        return in_array($current, array('pending', 'failed'), true);
+    }
+
+    return true;
+}
+
+/**
+ * Resolve the caller for a customer-facing order route from the `User-Cookie`
+ * header (or `cookie` request parameter) and confirm they may access $order.
+ *
+ * Accepts: store staff (edit_shop_orders), the order's customer, or a guest
+ * presenting the order key.
+ *
+ * @return true|WP_Error
+ */
+function mstore_rest_customer_order_access($request, $order)
+{
+    if (!$order || !is_object($order) || !method_exists($order, 'get_customer_id')) {
+        return new WP_Error('rest_order_invalid', 'Invalid order ID.', array('status' => 404));
+    }
+
+    $cookie = null;
+    if (is_object($request) && method_exists($request, 'get_header')) {
+        $cookie = get_header_user_cookie($request->get_header('User-Cookie'));
+    }
+    if ((!isset($cookie) || $cookie === null || $cookie === '') && isset($request['cookie']) && is_string($request['cookie'])) {
+        // A `+` inside a base64 query parameter arrives as a space.
+        $cookie = get_header_user_cookie(str_replace(' ', '+', $request['cookie']));
+    }
+
+    if (isset($cookie) && $cookie !== null && $cookie !== '') {
+        $user_id = validateCookieLogin($cookie);
+        if (is_wp_error($user_id)) {
+            return $user_id;
+        }
+
+        if (user_can($user_id, 'edit_shop_orders')) {
+            return true;
+        }
+
+        if ((int) $order->get_customer_id() !== 0 && (int) $order->get_customer_id() === (int) $user_id) {
+            return true;
+        }
+    }
+
+    $order_key = isset($request['order_key']) ? (string) $request['order_key'] : '';
+    if ($order_key !== '' && hash_equals((string) $order->get_order_key(), $order_key)) {
+        return true;
+    }
+
+    if (!isset($cookie) || $cookie === null || $cookie === '') {
+        return new WP_Error('rest_unauthenticated', 'Missing or invalid authentication cookie.', array('status' => 401));
+    }
+
+    return new WP_Error('rest_forbidden_owner', 'You do not have permission to access this order.', array('status' => 403));
+}
+
+/**
+ * Tap Payments secret key used to confirm charges server-side.
+ */
+function mstore_get_tap_secret_key()
+{
+    $key = defined('MSTORE_TAP_SECRET_KEY') ? (string) constant('MSTORE_TAP_SECRET_KEY') : '';
+    if ($key === '') {
+        $key = (string) get_option('mstore_tap_secret_key', '');
+    }
+    return trim($key);
+}
+
+/**
+ * Validate a Tap charge object against the order it is supposed to pay for.
+ *
+ * @param array  $charge         Decoded charge object from GET /v2/charges/{id}.
+ * @param string $charge_id      Charge id the client claimed.
+ * @param float  $order_total    Order total.
+ * @param string $order_currency Order currency code.
+ * @return true|WP_Error
+ */
+function mstore_validate_tap_charge($charge, $charge_id, $order_total, $order_currency)
+{
+    if (!is_array($charge)) {
+        return new WP_Error('tap_invalid_response', 'Unexpected response from Tap.');
+    }
+
+    if (!isset($charge['id']) || !is_string($charge['id']) || !hash_equals($charge['id'], (string) $charge_id)) {
+        return new WP_Error('tap_charge_mismatch', 'The charge id does not match.');
+    }
+
+    $status = isset($charge['status']) ? strtoupper((string) $charge['status']) : '';
+    if ($status !== 'CAPTURED') {
+        return new WP_Error('tap_not_captured', 'The charge status is ' . ($status === '' ? 'unknown' : $status) . '.');
+    }
+
+    if (!isset($charge['amount']) || !is_numeric($charge['amount'])) {
+        return new WP_Error('tap_amount_missing', 'The charge amount is missing.');
+    }
+
+    if (abs((float) $charge['amount'] - (float) $order_total) > 0.009) {
+        return new WP_Error('tap_amount_mismatch', 'The charge amount does not match the order total.');
+    }
+
+    $currency = isset($charge['currency']) ? strtoupper(trim((string) $charge['currency'])) : '';
+    if ($currency === '' || $currency !== strtoupper(trim((string) $order_currency))) {
+        return new WP_Error('tap_currency_mismatch', 'The charge currency does not match the order currency.');
+    }
+
+    return true;
+}
+
+/**
+ * Confirm a Tap charge with Tap's API before an order is marked as paid.
+ *
+ * @return true|WP_Error
+ */
+function mstore_verify_tap_charge($charge_id, $order, $secret_key)
+{
+    $charge_id = trim((string) $charge_id);
+    if (!preg_match('/^[A-Za-z0-9_\-]{1,120}$/', $charge_id)) {
+        return new WP_Error('tap_invalid_charge_id', 'Invalid Tap charge id.');
+    }
+
+    $response = wp_remote_get('https://api.tap.company/v2/charges/' . rawurlencode($charge_id), array(
+        'timeout' => 15,
+        'headers' => array(
+            'Authorization' => 'Bearer ' . $secret_key,
+            'Accept' => 'application/json',
+        ),
+    ));
+
+    if (is_wp_error($response)) {
+        return $response;
+    }
+
+    $code = (int) wp_remote_retrieve_response_code($response);
+    if ($code !== 200) {
+        return new WP_Error('tap_lookup_failed', 'Tap returned HTTP ' . $code . '.');
+    }
+
+    $charge = json_decode(wp_remote_retrieve_body($response), true);
+
+    return mstore_validate_tap_charge($charge, $charge_id, $order->get_total(), $order->get_currency());
+}
+
 function checkWhiteListAccounts ($user_id) {
     $whiteList = array('vendor@demo.com', 'delivery_demo', 'demo');
     $user_info = get_userdata($user_id);

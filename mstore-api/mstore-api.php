@@ -3,7 +3,7 @@
  * Plugin Name: MStore API
  * Plugin URI: https://github.com/inspireui/mstore-api
  * Description: The MStore API Plugin which is used for the FluxBuilder and FluxStore Mobile App
- * Version: 4.22.0
+ * Version: 4.22.1
  * Author: FluxBuilder
  * Author URI: https://fluxbuilder.com
  * License: GPL-2.0-or-later
@@ -99,7 +99,7 @@ if ( is_readable( __DIR__ . '/vendor/autoload.php' ) ) {
 
 class MstoreCheckOut
 {
-    public $version = '4.22.0';
+    public $version = '4.22.1';
 
     public function __construct()
     {
@@ -810,7 +810,102 @@ add_action('admin_menu', 'mstore_plugin_setup_menu');
 
 function mstore_plugin_setup_menu()
 {
-    add_menu_page('MStore Api', 'MStore Api', 'manage_options', 'mstore-plugin', 'mstore_init');
+    $icon_url = plugin_dir_url(__FILE__) . 'assets/images/icon.svg';
+
+    add_menu_page(
+        'MStore API',
+        'MStore API',
+        'manage_options',
+        'mstore-plugin',
+        'mstore_init',
+        $icon_url
+    );
+
+    add_submenu_page(
+        'mstore-plugin',
+        'General',
+        'General',
+        'manage_options',
+        'mstore-plugin',
+        'mstore_init'
+    );
+
+    add_submenu_page(
+        'mstore-plugin',
+        'Notifications',
+        'Notifications',
+        'manage_options',
+        'mstore-notifications',
+        'mstore_init'
+    );
+
+    add_submenu_page(
+        'mstore-plugin',
+        'Social Login',
+        'Social Login',
+        'manage_options',
+        'mstore-social-login',
+        'mstore_init'
+    );
+
+    add_submenu_page(
+        'mstore-plugin',
+        'Tap Payments',
+        'Tap Payments',
+        'manage_options',
+        'mstore-tap-payments',
+        'mstore_init'
+    );
+
+    add_submenu_page(
+        'mstore-plugin',
+        'Firebase',
+        'Firebase',
+        'manage_options',
+        'mstore-firebase',
+        'mstore_init'
+    );
+
+    add_submenu_page(
+        'mstore-plugin',
+        'Apple Sign-In',
+        'Apple Sign-In',
+        'manage_options',
+        'mstore-apple-sign-in',
+        'mstore_init'
+    );
+
+    add_submenu_page(
+        'mstore-plugin',
+        'FluxBuilder',
+        'FluxBuilder',
+        'manage_options',
+        'mstore-fluxbuilder',
+        'mstore_init'
+    );
+}
+
+add_action('admin_head', 'mstore_admin_menu_icon_styles');
+function mstore_admin_menu_icon_styles()
+{
+    ?>
+    <style>
+        #toplevel_page_mstore-plugin .wp-menu-image {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #toplevel_page_mstore-plugin .wp-menu-image img {
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            object-fit: contain;
+            opacity: 1;
+            filter: none;
+        }
+    </style>
+    <?php
 }
 
 function mstore_init()
@@ -1766,26 +1861,38 @@ function get_promptpay_qrcode_routes()
     register_rest_route('promptpay', '/detail' . '/(?P<id>[\d]+)', array(
             'methods' => 'GET',
             'callback' => function($request){
+                $order = wc_get_order(absint($request['id']));
+                if (!$order) {
+                    return new WP_Error('rest_order_invalid', 'Invalid order ID.', array('status' => 404));
+                }
+
                 $available_payment_methods = WC()->payment_gateways()->payment_gateways();
+                if (!isset($available_payment_methods['thai-promptpay-easy'])) {
+                    return new WP_Error('invalid_plugin', 'The PromptPay payment gateway is not available.', array('status' => 404));
+                }
                 $paymentMethod = $available_payment_methods['thai-promptpay-easy'];
-                $order = wc_get_order($request['id'] );
                 $thank_msg = $paymentMethod->thank_msg;
- $promptpay_id = $paymentMethod->promptpay_id;
- $promptpay_type = $paymentMethod->promptpay_type;
- $promptpay_name = $paymentMethod->promptpay_name;
- $include_price = $paymentMethod->include_price;
+                $promptpay_id = $paymentMethod->promptpay_id;
+                $promptpay_type = $paymentMethod->promptpay_type;
+                $promptpay_name = $paymentMethod->promptpay_name;
+                $include_price = $paymentMethod->include_price;
                 $image_url = get_site_url() . "/wp-content/plugins/thai-promptpay-payment-easy-gateway-plugin/images/promptpay_qrcode/promptpay-qr-l.php?type=$promptpay_type&promptpay_id=$promptpay_id";
 
- if($include_price=='yes'){
- $price = $order->get_total();
- $image_url .= "&price=$price&p=1";
- }
-
+                if($include_price=='yes'){
+                    $price = $order->get_total();
+                    $image_url .= "&price=$price&p=1";
+                }
 
                 return  ['thank_msg' => $thank_msg, 'qrcode_url' => $image_url, 'promptpay_id' => $promptpay_id, 'promptpay_name' => $promptpay_name, 'promptpay_type' => $paymentMethod->promptpay_type_name[$promptpay_type]];
             },
-            'permission_callback' => function () {
-                return true;
+            'permission_callback' => function ($request) {
+                // The order total and merchant details are only shown to the
+                // order's customer, a guest holding the order key, or store staff.
+                $order = wc_get_order(absint($request['id']));
+                if (!$order) {
+                    return new WP_Error('rest_order_invalid', 'Invalid order ID.', array('status' => 404));
+                }
+                return mstore_rest_customer_order_access($request, $order);
             },
         )
     );

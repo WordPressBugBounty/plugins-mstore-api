@@ -1,5 +1,7 @@
 <?php
 
+require_once(__DIR__ . '/vendor-admin-access-helper.php');
+
 class ProductManagementHelper
 {
     public function sendError($code, $message, $statusCode)
@@ -452,6 +454,21 @@ class ProductManagementHelper
 		if(empty($id)){
 			$is_create_product = true;
 		}
+
+        if (!$is_create_product) {
+            if (!is_numeric($id)) {
+                return $this->sendError("request_failed", "Invalid product id", 400);
+            }
+            $existing_product = wc_get_product(absint($id));
+            if (!$existing_product) {
+                return $this->sendError("invalid_product", "This product does not exist", 404);
+            }
+            // Vendors may only edit products they own; store managers may edit any.
+            if (!VendorAdminAccessHelper::can_manage_product($user_id, $existing_product)) {
+                return $this->sendError("unauthorized", "You are not allowed to update this product", 403);
+            }
+        }
+
         if ($is_seller) {
 			if($is_create_product){
 				$args = [
@@ -466,7 +483,7 @@ class ProductManagementHelper
             	$post_id = wp_insert_post($args);
 			}
 			else{
-				$post_id = sanitize_text_field($request["id"]);
+				$post_id = absint($id);
 			}
 
 			$product = wc_get_product($post_id);
@@ -826,10 +843,14 @@ class ProductManagementHelper
                         update_post_meta($product->get_id(), $item['type'].'_wholesale_price', $item['wholesale_price']);
                     }
                 }
-                wp_update_post([
-                    "ID" => $product->get_id(),
-                    "post_author" => $user_id,
-                ]);
+                // Only a freshly created product is attributed to the caller;
+                // editing must never transfer another vendor's product.
+                if ($is_create_product) {
+                    wp_update_post([
+                        "ID" => $product->get_id(),
+                        "post_author" => $user_id,
+                    ]);
+                }
                 //print_r($product);
                 $p = $product->get_data();
 

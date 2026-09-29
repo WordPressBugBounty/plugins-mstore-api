@@ -1,5 +1,7 @@
 <?php
 
+require_once(__DIR__ . '/vendor-admin-access-helper.php');
+
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
@@ -538,15 +540,27 @@ class VendorAdminWooHelper
     public function flutter_update_order_status($request, $user_id)
     {
         $order_id = sanitize_text_field($request['order_id']);
-        $order_status = sanitize_text_field($request['order_status']);
+        $order_status = VendorAdminAccessHelper::normalize_order_status($request['order_status']);
         if (!is_numeric($order_id)) {
             return new WP_REST_Response(array(
                 'status' => 'success',
                 'response' => []
             ), 200);
         }
+        if ($order_status === false) {
+            return $this->sendError("invalid_status", "The requested order status is not valid", 400);
+        }
 
-        $order = wc_get_order($order_id);
+        $order = wc_get_order(absint($order_id));
+        if (!$order) {
+            return $this->sendError("invalid_order", "This order does not exist", 404);
+        }
+
+        // Vendors may only change orders that belong to them (store managers may change any).
+        if (!VendorAdminAccessHelper::can_manage_order($user_id, $order)) {
+            return VendorAdminAccessHelper::forbidden_error('You are not allowed to manage this order.');
+        }
+
         $order->update_status($order_status, '', true);
 
         $note = sanitize_text_field($request['customer_note']);
@@ -568,7 +582,7 @@ class VendorAdminWooHelper
     }
 
     // Update review status
-    function flutter_update_review($request)
+    function flutter_update_review($request, $user_id = 0)
     {
 
     }
@@ -1045,6 +1059,13 @@ class VendorAdminWooHelper
             return $this->sendError("invalid_role", "You must be seller to update product", 401);
         }
 
+        if (!$product) {
+            return $this->sendError("invalid_product", "This product does not exist", 404);
+        }
+        if (!VendorAdminAccessHelper::can_manage_product($user_id, $product)) {
+            return $this->sendError("unauthorized", "You are not allowed to update this product", 403);
+        }
+
         $name = sanitize_text_field($request["name"]);
         $description = sanitize_text_field($request["description"]);
         $short_description = sanitize_text_field($request["short_description"]);
@@ -1395,8 +1416,6 @@ class VendorAdminWooHelper
 /// DELETE ///
     public function vendor_admin_delete_product($request, $user_id)
     {
-        $request = sanitize_text_field($request);
-
         $user = get_userdata($user_id);
         $isSeller = in_array("editor", $user->roles) || in_array("administrator", $user->roles);
         if (!$isSeller) {
@@ -1408,6 +1427,13 @@ class VendorAdminWooHelper
             $product = $this->get_product_item($id);
         } else {
             return $this->sendError("request_failed", "Invalid data", 400);
+        }
+        if (!$product) {
+            return $this->sendError("invalid_product", "This product does not exist", 404);
+        }
+        // Only the product owner or a store manager may delete it.
+        if (!VendorAdminAccessHelper::can_manage_product($user_id, $product)) {
+            return $this->sendError("unauthorized", "You are not allowed to delete this product", 403);
         }
         wp_delete_post($product->get_id());
         return new WP_REST_Response(array(

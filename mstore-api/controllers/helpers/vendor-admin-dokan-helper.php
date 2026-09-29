@@ -1,5 +1,7 @@
 <?php
 
+require_once(__DIR__ . '/vendor-admin-access-helper.php');
+
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
@@ -699,16 +701,28 @@ class VendorAdminDokanHelper
         global $WCFM;
 
         $order_id = sanitize_text_field($request['order_id']);
-        $order_status = sanitize_text_field($request['order_status']);
+        $order_status = VendorAdminAccessHelper::normalize_order_status($request['order_status']);
 
-        if (!dokan_is_seller_has_order($user_id, $order_id) || !is_numeric($order_id)) {
+        if (!is_numeric($order_id)) {
             return new WP_REST_Response(array(
                 'status' => 'success',
                 'response' => []
             ), 200);
         }
+        if ($order_status === false) {
+            return $this->sendError("invalid_status", "The requested order status is not valid", 400);
+        }
 
-        $order = wc_get_order($order_id);
+        $order = wc_get_order(absint($order_id));
+        if (!$order) {
+            return $this->sendError("invalid_order", "This order does not exist", 404);
+        }
+
+        // Sellers may only change orders that belong to them (store managers may change any).
+        if (!VendorAdminAccessHelper::can_manage_order($user_id, $order)) {
+            return VendorAdminAccessHelper::forbidden_error('You are not allowed to manage this order.');
+        }
+
         $order->update_status($order_status, '', true);
 
         $note = sanitize_text_field($request['customer_note']);
@@ -866,7 +880,7 @@ class VendorAdminDokanHelper
     }
 
     // Update review status
-    function flutter_update_review($request)
+    function flutter_update_review($request, $user_id = 0)
     {
     }
 

@@ -288,9 +288,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     $this,
                     'get_bookings'
                 ) ,
-                'permission_callback' => function () {
-                    return true;
-                }
+                'permission_callback' => array($this, 'booking_route_permission_check')
             ));
 
             register_rest_route('wp/v2', '/get-ticket/(?P<booking_id>\d+)', array(
@@ -299,9 +297,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     $this,
                     'get_ticket'
                 ) ,
-                'permission_callback' => function () {
-                    return true;
-                }
+                'permission_callback' => array($this, 'booking_route_permission_check')
             ));
 
             register_rest_route('wp/v2', '/cancel-booking', array(
@@ -310,9 +306,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     $this,
                     'cancel_booking'
                 ) ,
-                'permission_callback' => function () {
-                    return true;
-                }
+                'permission_callback' => array($this, 'booking_route_permission_check')
             ));
 
             register_rest_route('wp/v2', '/delete-booking', array(
@@ -321,9 +315,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     $this,
                     'delete_booking'
                 ) ,
-                'permission_callback' => function () {
-                    return true;
-                }
+                'permission_callback' => array($this, 'booking_route_permission_check')
             ));
 
             register_rest_route('wp/v2', '/payment', array(
@@ -2115,6 +2107,13 @@ class FlutterTemplate extends WP_REST_Posts_Controller
     // ListingPro theme functions
     public function get_listingpro_reviews_by_id(WP_REST_Request $request) {
         $listing_id = $request['listing_id'];
+
+        // Reviewer emails are only visible to callers who can moderate comments.
+        $viewer_id = $this->resolve_request_user($request);
+        if (is_wp_error($viewer_id)) {
+            $viewer_id = 0;
+        }
+        $can_moderate = $viewer_id && user_can($viewer_id, 'moderate_comments');
         $page = max(1, absint($request->get_param('page') ?: 1));
         $per_page = absint($request->get_param('per_page') ?: 100);
 
@@ -2144,7 +2143,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                 'date' => get_the_date('Y-m-d\TH:i:s'),
                 'rating' => get_post_meta($post_id, 'lp_listingpro_options', true)['rating'] ?? 0,
                 'author_name' => $this->get_author_meta(['author' => $author_id]),
-                'author_email' => ($user = get_user_by('ID', $author_id)) ? $user->user_email : '',
+                'author_email' => ($can_moderate && ($user = get_user_by('ID', $author_id))) ? $user->user_email : '',
                 'author_avatar' => $avatar_url ?: '',
                 'gallery_images' => $this->get_post_gallery_images_listingPro(['id' => $post_id])
             ];
@@ -2321,9 +2320,86 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         return $data;
     }
 
+    /**
+     * Resolve the calling user for booking routes.
+     *
+     * Accepts a real WordPress session, the `User-Cookie` header or a `cookie`
+     * parameter. Every path is verified with wp_validate_auth_cookie(); a bare
+     * username is never trusted.
+     *
+     * @return int|WP_Error
+     */
+    public function resolve_request_user($request)
+    {
+        if (function_exists('is_user_logged_in') && is_user_logged_in()) {
+            return absint(get_current_user_id());
+        }
+
+        $cookie = null;
+        if (is_object($request) && method_exists($request, 'get_header')) {
+            $cookie = get_header_user_cookie($request->get_header('User-Cookie'));
+        }
+        if (empty($cookie) && isset($request['cookie']) && is_string($request['cookie'])) {
+            // A `+` inside a base64 query parameter arrives as a space.
+            $cookie = get_header_user_cookie(str_replace(' ', '+', $request['cookie']));
+        }
+
+        if (empty($cookie)) {
+            return new WP_Error('rest_unauthenticated', 'Missing or invalid authentication cookie.', array('status' => 401));
+        }
+
+        $user_id = validateCookieLogin($cookie);
+        if (is_wp_error($user_id)) {
+            return $user_id;
+        }
+
+        return absint($user_id);
+    }
+
+    public function booking_route_permission_check($request)
+    {
+        $user_id = $this->resolve_request_user($request);
+
+        return is_wp_error($user_id) ? $user_id : true;
+    }
+
+    /**
+     * Only the booking's customer, the listing owner, or a site administrator
+     * may read or change a booking.
+     */
+    protected function user_can_access_booking($user_id, $booking)
+    {
+        $user_id = absint($user_id);
+        if (empty($user_id) || !is_array($booking)) {
+            return false;
+        }
+
+        if (user_can($user_id, 'manage_options')) {
+            return true;
+        }
+
+        $author_id = isset($booking['bookings_author']) ? absint($booking['bookings_author']) : 0;
+        $owner_id = isset($booking['owner_id']) ? absint($booking['owner_id']) : 0;
+
+        return ($author_id > 0 && $author_id === $user_id) || ($owner_id > 0 && $owner_id === $user_id);
+    }
+
     public function get_bookings($request)
     {
-        $user_id = $request['user_id'];
+        $user_id = $this->resolve_request_user($request);
+        if (is_wp_error($user_id)) {
+            return $user_id;
+        }
+
+        // A caller can only list their own bookings; administrators may look
+        // up another user's list.
+        $requested_user_id = isset($request['user_id']) ? absint($request['user_id']) : 0;
+        if ($requested_user_id && $requested_user_id !== $user_id) {
+            if (!user_can($user_id, 'manage_options')) {
+                return new WP_Error('rest_forbidden', 'You can only list your own bookings.', array('status' => 403));
+            }
+            $user_id = $requested_user_id;
+        }
 
         $args = array(
             'bookings_author' => $user_id,
@@ -2428,31 +2504,19 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             wp_die('Booking not found');
         }
 
-        // Check if user is authorized (booking owner or listing owner)
-        $current_user_id = get_current_user_id();
-
-        // Try to get user from cookie parameter if not logged in via WP
-        if (!$current_user_id && isset($_GET['cookie'])) {
-            $cookie = base64_decode($_GET['cookie']);
-            if ($cookie) {
-                $cookie_parts = explode('|', $cookie);
-                if (count($cookie_parts) >= 1) {
-                    $username = $cookie_parts[0];
-                    $user = get_user_by('login', $username);
-                    if ($user) {
-                        $current_user_id = $user->ID;
-                        // Set current user for WordPress session
-                        wp_set_current_user($current_user_id);
-                    }
-                }
-            }
+        // Only the booking's customer or the listing owner may see the ticket.
+        // The caller is resolved from a validated WordPress auth cookie; a
+        // request-supplied username is never trusted.
+        $current_user_id = $this->resolve_request_user($request);
+        if (is_wp_error($current_user_id)) {
+            wp_die(esc_html($current_user_id->get_error_message()), '', array('response' => 401));
         }
 
-        if (!$current_user_id ||
-            ($current_user_id != $booking['bookings_author'] &&
-             $current_user_id != $booking['owner_id'])) {
-            wp_die('You are not authorized to access this ticket');
+        if (!$this->user_can_access_booking($current_user_id, $booking)) {
+            wp_die('You are not authorized to access this ticket', '', array('response' => 403));
         }
+
+        wp_set_current_user($current_user_id);
 
         // Check if booking is paid
         // Case 1: status = 'paid' directly (no order involved)
@@ -2526,6 +2590,9 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
         $body = json_decode($request->get_body(), true);
         $booking_id = isset($body['booking_id']) ? intval($body['booking_id']) : 0;
+        if (!$booking_id && isset($request['booking_id'])) {
+            $booking_id = intval($request['booking_id']);
+        }
 
         if (!$booking_id) {
             return new WP_Error('invalid_booking', 'Invalid booking ID', array('status' => 400));
@@ -2542,6 +2609,14 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
         if (!$booking) {
             return new WP_Error('booking_not_found', 'Booking not found', array('status' => 404));
+        }
+
+        $user_id = $this->resolve_request_user($request);
+        if (is_wp_error($user_id)) {
+            return $user_id;
+        }
+        if (!$this->user_can_access_booking($user_id, $booking)) {
+            return new WP_Error('rest_forbidden', 'You are not allowed to cancel this booking', array('status' => 403));
         }
 
         // Update booking status to cancelled
@@ -2573,6 +2648,9 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
         $body = json_decode($request->get_body(), true);
         $booking_id = isset($body['booking_id']) ? intval($body['booking_id']) : 0;
+        if (!$booking_id && isset($request['booking_id'])) {
+            $booking_id = intval($request['booking_id']);
+        }
 
         if (!$booking_id) {
             return new WP_Error('invalid_booking', 'Invalid booking ID', array('status' => 400));
@@ -2589,6 +2667,14 @@ class FlutterTemplate extends WP_REST_Posts_Controller
 
         if (!$booking) {
             return new WP_Error('booking_not_found', 'Booking not found', array('status' => 404));
+        }
+
+        $user_id = $this->resolve_request_user($request);
+        if (is_wp_error($user_id)) {
+            return $user_id;
+        }
+        if (!$this->user_can_access_booking($user_id, $booking)) {
+            return new WP_Error('rest_forbidden', 'You are not allowed to delete this booking', array('status' => 403));
         }
 
         // Delete the booking
@@ -3487,9 +3573,43 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             {
                 $post_id = get_the_ID();
             }
-            $comments = get_comments(array(
+            // Reviewer emails and unapproved / private-post comments are only
+            // visible to callers who can moderate comments.
+            $viewer_id = $this->resolve_request_user($request);
+            if (is_wp_error($viewer_id)) {
+                $viewer_id = 0;
+            }
+            $can_moderate = $viewer_id && user_can($viewer_id, 'moderate_comments');
+
+            $post = get_post($post_id);
+            if (!$post) {
+                return [];
+            }
+            if (!$can_moderate) {
+                $is_author = $viewer_id && absint($post->post_author) === $viewer_id;
+                if (!$is_author && ($post->post_status !== 'publish' || post_password_required($post))) {
+                    return [];
+                }
+            }
+
+            $query_args = array(
                 'post_id' => $post_id
-            ));
+            );
+            if (!$can_moderate) {
+                $query_args['status'] = 'approve';
+            }
+            $comments = get_comments($query_args);
+
+            if (!$can_moderate && $viewer_id) {
+                $own_pending = get_comments(array(
+                    'post_id' => $post_id,
+                    'status' => 'hold',
+                    'user_id' => $viewer_id,
+                ));
+                if (is_array($own_pending) && !empty($own_pending)) {
+                    $comments = array_merge($comments, $own_pending);
+                }
+            }
 
             $results = [];
             if ($this->_isMyListing)
@@ -3581,7 +3701,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     "author_name" => $item->comment_author,
                     "date" => $item->comment_date,
                     "content" => $item->comment_content,
-                    "author_email" => $item->comment_author_email,
+                    "author_email" => $can_moderate ? $item->comment_author_email : '',
                     "author_avatar" => $author_avatar,
                     "gallery_images" => $gallery_images,
                     "detailed_ratings" => $detailed_ratings
@@ -3594,16 +3714,25 @@ class FlutterTemplate extends WP_REST_Posts_Controller
         {
             if ($this->_isListingPro)
             {
-                // Override comment status if needed
-                // Respect status from mobile app
-                // 'approved' -> 'publish', 'hold' -> 'pending'
+                // Only callers who can moderate comments may choose the
+                // approval status ('approved' -> 'publish', 'hold' -> 'pending');
+                // everyone else gets the site default.
+                $submitter_id = $this->resolve_request_user($request);
+                if (is_wp_error($submitter_id)) {
+                    $submitter_id = 0;
+                }
+                $can_moderate = $submitter_id && user_can($submitter_id, 'moderate_comments');
+
                 $post_status = 'publish'; // default
-                if (isset($request['status']) && !empty($request['status'])) {
+                if ($can_moderate && isset($request['status']) && !empty($request['status'])) {
                     $post_status = ($request['status'] === 'approved') ? 'publish' : 'pending';
                 }
 
+                // An authenticated caller can only submit reviews as themselves.
+                $post_author = $submitter_id ? $submitter_id : $request['post_author'];
+
                 $post_information = array(
-                    'post_author' => $request['post_author'],
+                    'post_author' => $post_author,
                     'post_title' => $request['post_title'],
                     'post_content' => $request['post_content'],
                     'post_type' => 'lp-reviews',
@@ -3625,7 +3754,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                         if (empty($base64_image)) continue;
 
                         try {
-                            $attachment_id = upload_image_from_mobile($base64_image, $index, $request['post_author']);
+                            $attachment_id = upload_image_from_mobile($base64_image, $index, $post_author);
                             if ($attachment_id) {
                                 $uploaded_image_ids[] = $attachment_id;
                             }
@@ -3643,6 +3772,7 @@ class FlutterTemplate extends WP_REST_Posts_Controller
             if ($this->_isListeo || $this->_isMyListing)
             {
                 $cookie = get_header_user_cookie($request->get_header("User-Cookie"));
+                $user_id = 0;
                 if (isset($cookie) && $cookie != null) {
                     $user_id = validateCookieLogin($cookie);
                     if (is_wp_error($user_id)) {
@@ -3650,14 +3780,15 @@ class FlutterTemplate extends WP_REST_Posts_Controller
                     }
                     wp_set_current_user( $user_id );
                 }
+                $can_moderate = $user_id && user_can($user_id, 'moderate_comments');
                 $params = $request->get_params();
                 $_POST = array_merge($_POST, $params);
                 $comment = wp_handle_comment_submission( $params );
 
-                // Override comment status if needed
-                // Respect status from mobile app
+                // Only callers who can moderate comments may override the
+                // approval status decided by the site's moderation settings.
                 // 'approved' -> 'publish', 'hold' -> 'pending'
-                if (!is_wp_error($comment) && isset($request['status']) && !empty($request['status'])) {
+                if ($can_moderate && !is_wp_error($comment) && isset($request['status']) && !empty($request['status'])) {
                     $desired_status = $request['status'];
                     if ($comment->comment_approved !== $desired_status) {
                         wp_set_comment_status($comment->comment_ID, $desired_status === 'approved' ? 'approve' : 'hold');

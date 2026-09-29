@@ -2,7 +2,7 @@
 Contributors:      inspireui
 Tags:              flutter, app builder, app creator, mobile app builder, woocommerce app
 Requires at least: 4.4
-Stable tag:        4.22.0
+Stable tag:        4.22.1
 Tested up to:      7.1
 License:           GPL-2.0
 License URI:       https://www.gnu.org/licenses/gpl-2.0.html
@@ -48,6 +48,21 @@ Ready to go mobile? Download the MStore API plugin and unlock the power of FluxB
 1. Click Install.
 
 == Changelog ==
+= 4.22.1 =
+  * Add Google client ID and Facebook App ID settings to verify social login tokens
+  * Add Tap Payments secret key setting to confirm charges before completing orders
+  * Improve MStore API admin dashboard UI, branding and asset loading
+  * Split MStore API dashboard settings into tabs
+  * Security: Verify Google and Facebook token audience before social login (reported by Antoine Morato via WPScan)
+  * Security: Enforce ownership checks on vendor-admin product, order status, delivery assignment and review moderation routes (reported by Raphael P. Cigana via WPScan)
+  * Security: Require authentication and ownership on Listeo booking list, cancel and delete routes (reported by Stefan Teubes via WPScan)
+  * Security: Resolve the Listeo ticket viewer from a validated auth cookie instead of a request-supplied username (reported by Naoki Kawahigashi via WPScan and Maximiliano Olivera)
+  * Security: Hide reviewer emails and unapproved comments from unauthorized callers on Listeo and ListingPro review listings (reported by Raphael P. Cigana via WPScan)
+  * Security: Require the moderate_comments capability before honouring a caller-supplied review status (reported by Raphael P. Cigana via WPScan)
+  * Security: Restrict customer order status updates to unpaid states and cancellation (reported by cyberkareem via WPScan)
+  * Security: Verify Tap charges with Tap before marking orders as paid
+  * Security: Require order ownership or order key on the PromptPay detail route
+
 = 4.22.0 =
   * Add vendor sale stats period series, weekly series, totals, and profit percentages
   * Add delivery user information to vendor order responses

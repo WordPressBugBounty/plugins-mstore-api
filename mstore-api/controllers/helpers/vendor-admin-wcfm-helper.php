@@ -1,5 +1,7 @@
 <?php
 
+require_once(__DIR__ . '/vendor-admin-access-helper.php');
+
 class VendorAdminWCFMHelper
 {
     public function sendError($code, $message, $statusCode)
@@ -832,7 +834,7 @@ class VendorAdminWCFMHelper
         global $WCFM;
 
         $order_id = sanitize_text_field($request['order_id']);
-        $order_status = sanitize_text_field($request['order_status']);
+        $order_status = VendorAdminAccessHelper::normalize_order_status($request['order_status']);
 
         if (!is_numeric($order_id)) {
             return new WP_REST_Response(array(
@@ -840,8 +842,20 @@ class VendorAdminWCFMHelper
                 'response' => []
             ), 200);
         }
+        if ($order_status === false) {
+            return $this->sendError("invalid_status", "The requested order status is not valid", 400);
+        }
 
-        $order = wc_get_order($order_id);
+        $order = wc_get_order(absint($order_id));
+        if (!$order) {
+            return $this->sendError("invalid_order", "This order does not exist", 404);
+        }
+
+        // Vendors may only change orders that belong to them (store managers may change any).
+        if (!VendorAdminAccessHelper::can_manage_order($user_id, $order)) {
+            return VendorAdminAccessHelper::forbidden_error('You are not allowed to manage this order.');
+        }
+
         $order->update_status($order_status, "", true);
         $shop_name = get_user_by("ID", $user_id)->display_name;
 
@@ -1007,7 +1021,7 @@ class VendorAdminWCFMHelper
     }
 
     // Update review status
-    function flutter_update_review($request)
+    function flutter_update_review($request, $user_id = 0)
     {
         global $WCFM, $WCFMmp, $wpdb;
         $reviewid = sanitize_text_field($request["id"]);
@@ -1034,6 +1048,14 @@ class VendorAdminWCFMHelper
                 !empty($review_data) &&
                 is_object($review_data)
             ) {
+                // Vendors may only moderate reviews written for their own store.
+                if (
+                    !VendorAdminAccessHelper::is_store_manager($user_id) &&
+                    absint($review_data->vendor_id) !== absint($user_id)
+                ) {
+                    return VendorAdminAccessHelper::forbidden_error('You are not allowed to manage this review.');
+                }
+
                 if ($status) {
                     // On Approve
                     $total_review_count = get_user_meta(
@@ -2976,6 +2998,25 @@ class VendorAdminWCFMHelper
         ];
 
         $wcfm_delivery_boy = absint($wcfm_delivery_boy);
+        $order_id = absint($order_id);
+        $order_item_id = absint($order_item_id);
+
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return $this->sendError("invalid_order", "This order does not exist", 404);
+        }
+
+        // Vendors may only dispatch drivers for orders that belong to them,
+        // for line items of that same order, and only to delivery accounts.
+        if (!VendorAdminAccessHelper::can_manage_order($vendor_id, $order)) {
+            return VendorAdminAccessHelper::forbidden_error('You are not allowed to manage this order.');
+        }
+        if (!$order_item_id || !$order->get_item($order_item_id)) {
+            return $this->sendError("invalid_order_item", "The order item does not belong to this order", 400);
+        }
+        if ($wcfm_delivery_boy && !VendorAdminAccessHelper::is_delivery_user($wcfm_delivery_boy)) {
+            return $this->sendError("invalid_delivery_user", "The selected user is not a delivery driver", 400);
+        }
 
         if ($wcfm_delivery_boy) {
             $wcfm_delivery_boy_user = get_userdata($wcfm_delivery_boy);

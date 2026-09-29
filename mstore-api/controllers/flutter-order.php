@@ -233,12 +233,27 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
 
         $params  = $request->get_params();
 
-        // Only allow cancellation if the order is currently 'pending' or 'failed'.
-        if (isset($params['status']) && $params['status'] === 'cancelled' && !in_array($order->get_status(), array('pending', 'failed'))) {
-            return new WP_Error('rest_forbidden_status', 'You can only cancel pending or failed orders.', array('status' => 403));
+        // Customers may only move their own order between unpaid states or
+        // cancel it while it is still pending / failed. Paid or fulfilled
+        // statuses (processing, completed, refunded, delivery statuses, ...)
+        // are reserved for the store and the payment gateways, otherwise an
+        // unpaid order could be marked as paid by its buyer.
+        if (isset($params['status'])) {
+            if (!is_scalar($params['status'])) {
+                return new WP_Error('rest_forbidden_status', 'Invalid order status.', array('status' => 400));
+            }
+            $requested_status = mstore_normalize_order_status_slug($params['status']);
+            $current_status = $order->get_status();
+
+            if ($requested_status === 'cancelled' && $requested_status !== $current_status && !in_array($current_status, array('pending', 'failed'), true)) {
+                return new WP_Error('rest_forbidden_status', 'You can only cancel pending or failed orders.', array('status' => 403));
+            }
+
+            if (!mstore_is_customer_order_status_change_allowed($current_status, $requested_status)) {
+                return new WP_Error('rest_forbidden_status', 'You do not have permission to set this order status.', array('status' => 403));
+            }
         }
 
-        // Keep status updates temporarily for backward compatibility with legacy apps.
         $blocked = array('set_paid', 'total', 'line_items', 'shipping_lines', 'fee_lines', 'coupon_lines', 'customer_id', 'transaction_id');
 
         foreach ($blocked as $field) {
@@ -536,10 +551,11 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
         //     WC()->mailer()->emails['WC_Email_New_Order']->trigger( $order->get_id(), $order, true );
         // }
 
-        //add order note if payment method is tap
+        // Tap payments: the transaction id is caller-supplied (and this route
+        // accepts guests), so the charge has to be confirmed with Tap before
+        // the order can be marked as paid.
         if (isset($params['payment_method']) && $params['payment_method'] == 'tap' && isset($params['transaction_id'])) {
-            $order->payment_complete();
-            $order->add_order_note('Tap payment successful.<br/>Tap ID: '.$params['transaction_id']);
+            $this->complete_verified_tap_payment($order, $params['transaction_id']);
         }
 
         //update order type for wholesale
@@ -554,6 +570,60 @@ class CUSTOM_WC_REST_Orders_Controller extends WC_REST_Orders_Controller
         }
 
         return  $response;
+    }
+
+    /**
+     * Mark an order as paid with Tap only after the charge has been verified
+     * against Tap's API (status, amount, currency) and has not already been
+     * used to pay for another order.
+     *
+     * @return bool Whether the payment was completed.
+     */
+    private function complete_verified_tap_payment($order, $charge_id)
+    {
+        $charge_id = sanitize_text_field((string) $charge_id);
+
+        $secret_key = mstore_get_tap_secret_key();
+        if ($secret_key === '') {
+            $order->add_order_note(sprintf(
+                'Tap payment was NOT verified: no Tap secret key is configured in MStore API settings. The order stays unpaid. Tap ID: %s',
+                $charge_id
+            ));
+            return false;
+        }
+
+        $verification = mstore_verify_tap_charge($charge_id, $order, $secret_key);
+        if (is_wp_error($verification)) {
+            $order->add_order_note(sprintf(
+                'Tap payment could not be verified (%s). The order stays unpaid. Tap ID: %s',
+                $verification->get_error_message(),
+                $charge_id
+            ));
+            return false;
+        }
+
+        $existing = wc_get_orders(array(
+            'transaction_id' => $charge_id,
+            'limit' => 2,
+            'return' => 'ids',
+        ));
+        if (is_array($existing)) {
+            foreach ($existing as $existing_id) {
+                $existing_order = (int) $existing_id !== (int) $order->get_id() ? wc_get_order($existing_id) : null;
+                if ($existing_order && hash_equals((string) $existing_order->get_transaction_id(), $charge_id)) {
+                    $order->add_order_note(sprintf(
+                        'Tap payment rejected: charge %s was already used for order #%d. The order stays unpaid.',
+                        $charge_id,
+                        (int) $existing_id
+                    ));
+                    return false;
+                }
+            }
+        }
+
+        $order->payment_complete($charge_id);
+        $order->add_order_note('Tap payment successful.<br/>Tap ID: ' . $charge_id);
+        return true;
     }
 
     /**

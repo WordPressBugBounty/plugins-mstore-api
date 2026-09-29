@@ -7,6 +7,7 @@ require_once(__DIR__ . '/helpers/vendor-admin-woo-helper.php');
 require_once(__DIR__ . '/helpers/vendor-admin-wcfm-helper.php');
 require_once(__DIR__ . '/helpers/vendor-admin-dokan-helper.php');
 require_once(__DIR__ . '/helpers/product-management.php');
+require_once(__DIR__ . '/helpers/vendor-admin-access-helper.php');
 
 /*
  * Base REST Controller for flutter
@@ -408,8 +409,8 @@ class FlutterVendorAdmin extends FlutterBaseController
         $helper = new VendorAdminWCFMHelper();
         if (isset($request['platform'])) {
             if ($request['platform'] == 'woo' || $request['platform'] == 'dokan') {
-                $order_id = sanitize_text_field($request["wcfm_tracking_order_id"]);
-                $delivery_boy = sanitize_text_field($request["wcfm_delivery_boy"]);
+                $order_id = absint($request["wcfm_tracking_order_id"]);
+                $delivery_boy = absint($request["wcfm_delivery_boy"]);
 
                 if (mstore_is_lddfw_active()) {
                     $meta_key = 'lddfw_driverid';
@@ -425,6 +426,15 @@ class FlutterVendorAdmin extends FlutterBaseController
                 $order = wc_get_order($order_id);
                 if (!$order) {
                     return parent::sendError("invalid_order", "This order does not exist", 404);
+                }
+
+                // Vendors may only dispatch drivers for orders that belong to
+                // them, and only to accounts that really are delivery drivers.
+                if (!VendorAdminAccessHelper::can_manage_order($user_id, $order)) {
+                    return VendorAdminAccessHelper::forbidden_error('You are not allowed to manage this order.');
+                }
+                if (!VendorAdminAccessHelper::is_delivery_user($delivery_boy)) {
+                    return parent::sendError("invalid_delivery_user", "The selected user is not a delivery driver", 400);
                 }
 
                 // Update driver ID for order.
@@ -565,7 +575,7 @@ class FlutterVendorAdmin extends FlutterBaseController
                 $helper = new VendorAdminDokanHelper();
             }
         }
-        return $helper->flutter_update_review($request);
+        return $helper->flutter_update_review($request, $user_id);
     }
 
     /* ---------------------------*/
@@ -747,7 +757,10 @@ class FlutterVendorAdmin extends FlutterBaseController
                 $helper = new VendorAdminDokanHelper();
             }
         }
-        $helper->flutter_update_review($request);
+        $result = $helper->flutter_update_review($request, $user_id);
+        if (is_wp_error($result)) {
+            return $result;
+        }
         return new WP_REST_Response(array(
             'status' => 'success',
         ), 200);

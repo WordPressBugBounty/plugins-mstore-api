@@ -7,6 +7,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 require_once(__DIR__ . '/flutter-base.php');
 require_once(__DIR__ . '/helpers/apple-sign-in-helper.php');
 require_once(__DIR__ . '/helpers/facebook-jwt-helper.php');
+require_once(__DIR__ . '/helpers/social-login-helper.php');
 require_once(__DIR__ . '/helpers/firebase-phone-auth-helper.php');
 
 class FlutterUserController extends FlutterBaseController
@@ -1036,35 +1037,21 @@ class FlutterUserController extends FlutterBaseController
 
     public function fb_connect($request)
     {
-        $fields = 'id,name,first_name,last_name,email';
         $access_token = $request["access_token"];
         if (!isset($access_token)) {
             return parent::sendError("invalid_login", "You must include a 'access_token' variable. Get the valid access_token for this app from Facebook API.", 400);
         }
 
-        $result = [];
-
-        // If token is an AuthenticationToken (in case of limited login for
-        // iOS), validate the JWT and return the payload
-        $jwt = FacebookJWTHelper::validateJWT($access_token);
-
-        if ($jwt['success']) {
-            $decodedPayload = $jwt['decoded']['payload'];
-            $result["email"] = $decodedPayload->email;
-            $result["name"] = $decodedPayload->name;
-            $result["first_name"] = $decodedPayload->given_name;
-            $result["last_name"] = $decodedPayload->family_name;
-        } else {
-            $url = 'https://graph.facebook.com/me/?fields=' . $fields . '&access_token=' . $access_token;
-            $payload = wp_remote_retrieve_body(wp_remote_get($url));
-            $result = json_decode($payload, true);
+        // The email inside a token is only trusted once the token is proven to
+        // have been issued to this site's Facebook app (Limited Login JWT `aud`
+        // or Graph API app id). A token obtained through someone else's app
+        // must never log a user in here.
+        $profile = MStoreSocialLoginHelper::verify_facebook_token($access_token);
+        if (is_wp_error($profile)) {
+            return $profile;
         }
 
-        if (isset($result["email"])) {
-            return $this->createSocialAccount($result["email"], $result['name'], $result['first_name'], $result['last_name']);
-        } else {
-            return parent::sendError("invalid_login", "Your 'access_token' did not return email of the user. Without 'email' user can't be logged in or registered. Get user email extended permission while joining the Facebook app.", 400);
-        }
+        return $this->createSocialAccount($profile['email'], $profile['name'], $profile['first_name'], $profile['last_name']);
     }
 
     public function sms_login($request)
@@ -1280,20 +1267,14 @@ class FlutterUserController extends FlutterBaseController
             return parent::sendError("invalid_login", "You must include a 'access_token' variable. Get the valid access_token for this app from Google API.", 400);
         }
 
-        $url = 'https://www.googleapis.com/oauth2/v1/userinfo?alt=json&access_token=' . $access_token;
-
-        $result = wp_remote_retrieve_body(wp_remote_get($url));
-
-        $result = json_decode($result, true);
-        if (isset($result["email"])) {
-            $firstName = $result["given_name"];
-            $lastName = $result["family_name"];
-            $email = $result["email"];
-            $display_name = $firstName . " " . $lastName;
-            return $this->createSocialAccount($email, $display_name, $firstName, $lastName);
-        } else {
-            return parent::sendError("invalid_login", "Your 'token' did not return email of the user. Without 'email' user can't be logged in or registered. Get user email extended permission while joining the Google app.", 400);
+        // Verify the token audience against the configured Google client ids
+        // before trusting the email it resolves to.
+        $profile = MStoreSocialLoginHelper::verify_google_token($access_token);
+        if (is_wp_error($profile)) {
+            return $profile;
         }
+
+        return $this->createSocialAccount($profile['email'], $profile['name'], $profile['first_name'], $profile['last_name']);
     }
 
     /*
